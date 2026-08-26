@@ -83,20 +83,25 @@ def get_args_interactive() -> List[str]:
                 args.append(filepath)
 
         elif proj == "BLE":
+            # Fresh run: bare "BLE" (matches README / run.sh usage)
+            if len(parts) == 1:
+                return args
+
             if len(parts) >= 3 and parts[1] == "--resume":
-                raw_path   = parts[2].strip()                
+                raw_path = parts[2].strip()
                 if not raw_path.lower().endswith(".json"):
                     print(Fore.RED + "  ✖ BLE resume file must be a .json file.")
                     print_commands()
                     continue
 
-                abs_path = (PROJECT_ROOT /"BLE" / raw_path).expanduser().resolve()
+                abs_path = (PROJECT_ROOT / "BLE" / raw_path).expanduser().resolve()
                 print(abs_path)
                 if not abs_path.exists():
                     print(Fore.RED + f"  ✖ BLE resume file '{raw_path}' not found. Please check the path.")
                     print_commands()
                     continue
-                args.extend(["--resume", str(raw_path)])             # store absolute path
+                # Pass the resolved absolute path so resume loads reliably
+                args.extend(["--resume", str(abs_path)])
             else:
                 print(Fore.RED + "  ✖ For BLE, use: BLE --resume <filepath> or BLE")
                 print_commands()

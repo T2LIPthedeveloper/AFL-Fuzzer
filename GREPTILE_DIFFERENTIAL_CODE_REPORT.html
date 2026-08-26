@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Greptile Differential Code Report — Four-Way Comparison</title>
+<style>
+:root {
+  --bg: #0a0e13;
+  --bg2: #121821;
+  --card: #161d28;
+  --text: #e8eef6;
+  --muted: #9aa8b8;
+  --acc: #7ec2ff;
+  --good: #6fdb9a;
+  --bad: #ff9b9b;
+  --warn: #f0d66e;
+  --none: #c0c0c0;
+  --border: #2a3544;
+  --human: #d4a5ff;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  background: radial-gradient(1200px 600px at 10% -10%, #1a2740 0%, transparent 50%), var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+.layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+nav.toc {
+  position: sticky; top: 0; align-self: start;
+  height: 100vh; overflow: auto;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  padding: 20px 14px 40px;
+  font-size: 0.8rem;
+}
+nav.toc .brand { color: var(--acc); font-weight: 700; font-size: 0.95rem; margin: 0 8px 12px; }
+nav.toc strong { display:block; color: var(--muted); margin: 14px 8px 6px; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; }
+nav.toc a { display:block; color: var(--muted); text-decoration: none; padding: 5px 8px; border-radius: 6px; }
+nav.toc a:hover { background: #1c2634; color: var(--text); }
+main { padding: 32px 44px 96px; max-width: 1000px; }
+h1 { color: var(--acc); font-size: 1.85rem; line-height: 1.25; margin-top: 0; }
+h2 { color: var(--acc); margin-top: 2.2em; padding-top: 0.5em; border-top: 1px solid var(--border); }
+h3 { color: #b8d9ff; margin-top: 1.35em; }
+p { margin: 0.75em 0; }
+a { color: var(--acc); }
+code { background: #0d131b; padding: 0.1em 0.4em; border-radius: 4px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.9em; }
+pre.code { background: #0d131b; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow: auto; }
+pre.code code { background: transparent; padding: 0; }
+.table-wrap { overflow-x: auto; margin: 1em 0; border: 1px solid var(--border); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.86rem; background: var(--card); }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: #1a2330; color: var(--acc); }
+ul, ol { margin: 0.6em 0 0.6em 1.25em; }
+li { margin: 0.28em 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.banner {
+  background: linear-gradient(135deg, #1a2a40, #152033);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 28px;
+}
+.pillrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pill { font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); }
+.pill.none { color: var(--none); }
+.pill.copilot { color: var(--warn); }
+.pill.greptile { color: var(--good); }
+.pill.human { color: var(--human); }
+.note { color: var(--muted); font-size: 0.9rem; }
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.toc { position: relative; height: auto; max-height: 220px; }
+  main { padding: 20px 16px 64px; }
+}
+@media print {
+  nav.toc { display: none; }
+  .layout { grid-template-columns: 1fr; }
+  main { max-width: none; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <div class="brand">Four-way review report</div>
+  <strong>Contents</strong>
+  <a href="#1-executive-summary">1. Executive summary</a>
+  <a href="#2-four-reviewers-defined">2. Four reviewers</a>
+  <a href="#3-experiment-methodology">3. Methodology</a>
+  <a href="#4-baseline-codebase-that-already-existed">4. Baseline code</a>
+  <a href="#5-code-changes-by-tier-exhaustive-inventory">5. Code changes</a>
+  <a href="#6-how-greptile-works">6. How Greptile works</a>
+  <a href="#7-how-copilot-works">7. How Copilot works</a>
+  <a href="#8-how-human-in-the-loop-review-works">8. Human-in-the-loop</a>
+  <a href="#9-what-no-reviewer-implies">9. No reviewer</a>
+  <a href="#10-greptile-tool-use-on-these-prs">10. Greptile tools</a>
+  <a href="#11-tier-results-small-pr-1">11. Small PR</a>
+  <a href="#12-tier-results-medium-pr-2">12. Medium PR</a>
+  <a href="#13-tier-results-large-pr-3">13. Large PR</a>
+  <a href="#14-master-finding-matrix-four-way">14. Finding matrix</a>
+  <a href="#15-graph-ast-necessity-analysis">15. Graph necessity</a>
+  <a href="#16-did-greptile-understand-the-crux">16. Crux understanding</a>
+  <a href="#17-volume-vs-normal-review">17. Volume vs normal</a>
+  <a href="#18-pros-and-cons-four-way">18. Pros / cons</a>
+  <a href="#19-cost-latency-and-process-friction">19. Cost / latency</a>
+  <a href="#20-failure-modes-and-pitfalls">20. Pitfalls</a>
+  <a href="#21-scenario-playbooks">21. Playbooks</a>
+  <a href="#22-recommendation-and-buy-decision">22. Recommendation</a>
+  <a href="#23-appendices">23. Appendices</a>
+</nav>
+<main>
+<div class="banner">
+  <strong>Comparison regimes:</strong> No reviewer · Copilot · Greptile · Human-in-the-loop alone
+  <div class="pillrow">
+    <span class="pill none">No reviewer</span>
+    <span class="pill copilot">Copilot (= Cursor Bugbot stand-in)</span>
+    <span class="pill greptile">Greptile</span>
+    <span class="pill human">Human-in-the-loop alone</span>
+  </div>
+  <p class="note" style="margin:12px 0 0">This HTML is a <strong>full twin</strong> of <code>GREPTILE_DIFFERENTIAL_CODE_REPORT.md</code>—not an abbreviated summary. GitHub Copilot product did not run (credits/access); the Copilot column uses Cursor Bugbot.</p>
+</div>
+<h1>GREPTILE_DIFFERENTIAL_CODE_REPORT.md</h1>
+<p><strong>Document type:</strong> End-to-end differential study of automated and human code review on AFL-Fuzzer  </p>
+<p><strong>Repository:</strong> <a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer">T2LIPthedeveloper/AFL-Fuzzer</a>  </p>
+<p><strong>Date:</strong> 2026-08-26 (four-way comprehensive expansion)  </p>
+<p><strong>Companion HTML:</strong> <code>GREPTILE_DIFFERENTIAL_CODE_REPORT.html</code> (<strong>full twin</strong> of this document—not a summary)  </p>
+<p><strong>Per-PR notes:</strong> <code>REPORT.md</code> on <code>develop-1</code>, <code>develop-2</code>, <code>develop-3</code></p>
+<hr/>
+<h2 id="table-of-contents">Table of contents</h2>
+<ol>
+<li><a href="#1-executive-summary">Executive summary</a></li>
+<li><a href="#2-four-reviewers-defined">Four reviewers defined</a></li>
+<li><a href="#3-experiment-methodology">Experiment methodology</a></li>
+<li><a href="#4-baseline-codebase-that-already-existed">Baseline codebase that already existed</a></li>
+<li><a href="#5-code-changes-by-tier-exhaustive-inventory">Code changes by tier (exhaustive inventory)</a></li>
+<li><a href="#6-how-greptile-works">How Greptile works</a></li>
+<li><a href="#7-how-copilot-works">How Copilot works</a></li>
+<li><a href="#8-how-human-in-the-loop-review-works">How human-in-the-loop review works</a></li>
+<li><a href="#9-what-no-reviewer-implies">What “no reviewer” implies</a></li>
+<li><a href="#10-greptile-tool-use-on-these-prs">Greptile tool use on these PRs</a></li>
+<li><a href="#11-tier-results--small-pr-1">Tier results — Small (PR #1)</a></li>
+<li><a href="#12-tier-results--medium-pr-2">Tier results — Medium (PR #2)</a></li>
+<li><a href="#13-tier-results--large-pr-3">Tier results — Large (PR #3)</a></li>
+<li><a href="#14-master-finding-matrix-four-way">Master finding matrix (four-way)</a></li>
+<li><a href="#15-graph--ast-necessity-analysis">Graph / AST necessity analysis</a></li>
+<li><a href="#16-did-greptile-understand-the-crux">Did Greptile understand the crux?</a></li>
+<li><a href="#17-volume-vs-normal-review">Volume vs normal review</a></li>
+<li><a href="#18-pros-and-cons-four-way">Pros and cons (four-way)</a></li>
+<li><a href="#19-cost-latency-and-process-friction">Cost, latency, and process friction</a></li>
+<li><a href="#20-failure-modes-and-pitfalls">Failure modes and pitfalls</a></li>
+<li><a href="#21-scenario-playbooks">Scenario playbooks</a></li>
+<li><a href="#22-recommendation-and-buy-decision">Recommendation and buy decision</a></li>
+<li><a href="#23-appendices">Appendices</a></li>
+</ol>
+<hr/>
+<h2 id="1-executive-summary">1. Executive summary</h2>
+<p>This study compares <strong>four review regimes</strong> on the same three pull requests to <code>main</code>:</p>
+<div class="table-wrap"><table>
+<tr><th>Regime</th><th>Meaning in this document</th></tr>
+<tr><td><strong>No reviewer</strong></td><td>Merge/ship with zero code review—human or automated</td></tr>
+<tr><td><strong>Copilot</strong></td><td>Automated “standard” AI review. <strong>In this experiment:</strong> Cursor Bugbot / Cursor agent review, because <strong>GitHub Copilot code review could not run</strong> (credits exhausted / collaborator API HTTP 422). Unless a sentence explicitly says “GitHub Copilot product,” <strong>Copilot = Cursor Bugbot</strong>.</td></tr>
+<tr><td><strong>Greptile</strong></td><td>Greptile GitHub App (<code>greptile-apps[bot]</code>) with repository graph index + agentic PR review</td></tr>
+<tr><td><strong>Human-in-the-loop alone</strong></td><td>A competent engineer reviewing without Greptile/Copilot bots—GitHub diff UI, local checkout, search (“find references”), judgment. Modeled from (a) what a careful senior would catch on these defects and (b) known human failure modes on integration bugs under time pressure</td></tr>
+</table></div>
+<h3 id="1-1-pr-ladder-results-at-a-glance">1.1 PR ladder results at a glance</h3>
+<div class="table-wrap"><table>
+<tr><th>Tier</th><th>Branch</th><th>PR</th><th>Code Δ vs <code>main</code></th><th>No reviewer</th><th>Copilot</th><th>Greptile</th><th>Human alone (modeled)</th></tr>
+<tr><td>Small</td><td><code>develop-1</code></td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1">#1</a></td><td>+93 / −8</td><td>Ships OK</td><td>0 defects</td><td>5/5, 0 defects</td><td>Would approve; maybe note unused <code>strategy_hits</code></td></tr>
+<tr><td>Medium</td><td><code>develop-2</code></td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2">#2</a></td><td>+618 / −21</td><td><strong>Ships broken schedulers</strong></td><td>1H+4M+1L</td><td>2/5, 2×P1 + outside-diff</td><td>Likely BLE unwired + donor; may miss keying/dict</td></tr>
+<tr><td>Large</td><td><code>develop-3</code></td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3">#3</a></td><td>+2432 / −23</td><td><strong>Ships lying telemetry/corpus</strong></td><td>2H+2M (+ medium)</td><td>2/5, 3×P1</td><td>Likely telemetry/<code>bug_id</code>; variable on minimizer/corpus</td></tr>
+</table></div>
+<h3 id="1-2-headline-conclusions">1.2 Headline conclusions</h3>
+<ol>
+<li><strong>No reviewer is unacceptable</strong> for medium/large tiers: new modules look complete in the diff but are <strong>partially unwired</strong>. BLE energy never learns; HTTP schedule state conflates endpoints; coverage collapses; crash reports can show <strong>zero</strong> crashes; corpus artifacts diverge from live selection.</li>
+<li><strong>Greptile understood the crux</strong> at every tier and produced <strong>integration / missing-edge</strong> findings aligned with its graph + agentic-search marketing (confidence 5→2, Mermaid flowcharts of absent edges).</li>
+<li><strong>Copilot matched Greptile on most critical defects</strong> and found additional issues Greptile missed (<code>coverage_gain</code> omission, corpus unused, rarity-as-gain, dict parse).</li>
+<li><strong>Human-in-the-loop alone</strong> can catch the worst integration bugs <em>with time and diligence</em>, but is <strong>inconsistent</strong>, slower, and historically weak on call-graph orphans under diff fatigue. Humans uniquely add product/intent/ethics critique bots skip.</li>
+<li><strong>TREX</strong> (Greptile sandbox execution) <strong>did not appear to run</strong>—Greptile findings here are static reasoning, not runtime evidence.</li>
+<li><strong>Best risk posture:</strong> human-in-the-loop <strong>plus</strong> one automated reviewer (Greptile <em>or</em> Copilot)—not automation replacing humans, and not humans without automation on 2k+ LOC integration PRs.</li>
+<li><strong>Pay for Greptile</strong> when you need always-on GitHub packaging (confidence, diagrams, unattended P1s). <strong>Do not expect a monopoly</strong> on graph-class bugs versus Copilot/Cursor already reviewing thoroughly.</li>
+</ol>
+<hr/>
+<h2 id="2-four-reviewers-defined">2. Four reviewers defined</h2>
+<h3 id="2-1-no-reviewer">2.1 No reviewer</h3>
+<ul>
+<li><strong>Process:</strong> Author merges after CI green (or without CI); no second read of the diff.</li>
+<li><strong>Information diet:</strong> Author’s mental model only.</li>
+<li><strong>Strengths:</strong> Zero latency, zero review cost, maximum velocity.</li>
+<li><strong>Weaknesses:</strong> Integration bugs in <em>this</em> experiment are exactly what authors miss—they wrote the new module and assumed wiring. No adversarial “API exists but never called” pass.</li>
+<li><strong>Fit:</strong> Trivial typos with tests. <strong>Not</strong> multi-file fuzzer pipeline grafts.</li>
+</ul>
+<h3 id="2-2-copilot-cursor-bugbot-here-github-copilot-product-documented">2.2 Copilot (Cursor Bugbot here; GitHub Copilot product documented)</h3>
+<p><strong>As used (Cursor Bugbot):</strong></p>
+<ul>
+<li>Invoked per branch with <code>Diff: branch changes</code> vs <code>main</code>.</li>
+<li>Emits severity-tagged findings with file/line.</li>
+<li>Does not auto-post to GitHub unless transcribed.</li>
+<li>On this repo: strong cross-file integration reasoning on medium/large.</li>
+</ul>
+<p><strong>GitHub Copilot product (not run):</strong></p>
+<ul>
+<li>Assign as PR reviewer or enable auto-review; <strong>Lite</strong> vs <strong>Balanced</strong> effort.</li>
+<li>Agentic “full project context” via GitHub Actions; optional MCP/skills; cloud-agent fix PRs.</li>
+<li>Always leaves a <strong>Comment</strong> review (never Approve / Request changes)—does not satisfy required approvals.</li>
+<li>Consumes AI credits; some file types excluded (lockfiles, logs, SVG, …).</li>
+</ul>
+<h3 id="2-3-greptile">2.3 Greptile</h3>
+<ul>
+<li>Builds a <strong>repository graph</strong> (files, functions, classes, imports, calls).</li>
+<li>v3 <strong>agentic loop</strong>: codebase search, learned rules, multi-hop exploration, optional git history.</li>
+<li>Posts PR summary, <strong>confidence 0–5</strong>, <strong>P0/P1/P2</strong> inline comments, optional Mermaid diagrams.</li>
+<li>Optional <strong>TREX</strong> runtime validation (not observed here).</li>
+<li>Learning via 👍/👎; custom <code>greptile.json</code> / <code>.greptile/</code> (not configured here).</li>
+</ul>
+<h3 id="2-4-human-in-the-loop-alone">2.4 Human-in-the-loop alone</h3>
+<ul>
+<li>Reads GitHub “Files changed” and/or local <code>git diff main...HEAD</code>.</li>
+<li>Uses IDE “find references,” mentally simulates fuzz loops, maybe runs a smoke test.</li>
+<li>Asks: “Is this feature actually called?” and “What would the campaign report show after 100 iterations?”</li>
+<li><strong>Not modeled as perfect:</strong> time pressure, fatigue on +2400 LOC, author bias, trust in modules that “look AFL-complete.”</li>
+<li><strong>Unique strengths:</strong> threat modeling, product intent, whether AFL semantics are <em>correct</em> (not merely wired), BLE operational cost, dictionary ethics, merge strategy across stacked PRs.</li>
+</ul>
+<h3 id="2-5-scoring-axes-used-throughout">2.5 Scoring axes used throughout</h3>
+<p>Detection likelihood · explanation quality · false-positive risk · latency · cost · consistency · merge-gate packaging · accountability.</p>
+<hr/>
+<h2 id="3-experiment-methodology">3. Experiment methodology</h2>
+<h3 id="3-1-goals">3.1 Goals</h3>
+<ol>
+<li>Build three <strong>additive</strong> difficulty tiers of real AFL-fuzzer changes.</li>
+<li>Open PRs to <code>main</code> so Greptile’s GitHub App reviews them.</li>
+<li>Run Copilot-equivalent (Cursor) reviews on the same diffs.</li>
+<li>Model <strong>no reviewer</strong> and <strong>human-alone</strong> outcomes against the same defect set.</li>
+<li>Judge whether Greptile’s graph/AST/agentic story yields defects hard without structural context.</li>
+<li>Produce buy/no-buy guidance with four-way nuance.</li>
+</ol>
+<h3 id="3-2-branch-ladder">3.2 Branch ladder</h3>
+<pre class="code"><code class="language-">
+main
+
+  └── develop-1   (small)     ── PR #1 → main
+
+        └── develop-2 (medium) ── PR #2 → main
+
+              └── develop-3 (large) ── PR #3 → main
+
+</code></pre>
+<p>Higher PRs’ diffs to <code>main</code> <strong>include</strong> lower tiers.</p>
+<h3 id="3-3-shas-under-review-code-pre-report-commits">3.3 SHAs under review (code, pre-report commits)</h3>
+<div class="table-wrap"><table>
+<tr><th>Tier</th><th>Code SHA</th></tr>
+<tr><td>Small</td><td><code>c82a6cf196bb3d1bfe4434088ce1092784db85d8</code></td></tr>
+<tr><td>Medium</td><td><code>ce356ed1471c78092f0c05769c7c780d064b0163</code></td></tr>
+<tr><td>Large</td><td><code>6a2233a35474118cac65ec89940e45996e2c93ec</code></td></tr>
+</table></div>
+<h3 id="3-4-evidence-sources">3.4 Evidence sources</h3>
+<ul>
+<li>Greptile issue + inline comments on PRs #1–#3 (captured 2026-08-26).</li>
+<li>Cursor Bugbot findings for each <code>develop-*</code> vs <code>main</code>.</li>
+<li>Greptile docs/blog: introduction, graph-based codebase context, anatomy of a review, key features / TREX, v3 agentic rewrite, TREX execution blog.</li>
+<li>GitHub Copilot code review documentation (concepts + how-to).</li>
+<li>Local inspection of <code>fuzz_stats.note_iteration</code>, <code>choose_next_seed</code>, BLE <code>afl_fuzz</code> loop, etc.</li>
+</ul>
+<h3 id="3-5-what-this-study-is-not">3.5 What this study is not</h3>
+<ul>
+<li>Not a statistically powered A/B across hundreds of PRs.</li>
+<li>Not a TREX evaluation.</li>
+<li>Not a live GitHub Copilot Balanced head-to-head (blocked).</li>
+<li>Not a claim that Cursor ≡ GitHub Copilot product quality.</li>
+<li>Human column is <strong>modeled</strong>, not a separate double-blind hired review.</li>
+</ul>
+<hr/>
+<h2 id="4-baseline-codebase-that-already-existed">4. Baseline codebase that already existed</h2>
+<p>On <code>main</code> before the experiment, AFL-Fuzzer already contained a multi-target fuzzing workspace.</p>
+<h3 id="4-1-http-django-greybox-path">4.1 HTTP / Django greybox path</h3>
+<ul>
+<li><strong><code>simple_fuzzer2.py</code> (<code>FuzzerClient</code>):</strong> OpenAPI-driven seed queue (<code>SeedQ</code>), mutation intensity, energy heuristics, coverage probes, crash correlation, bug classification, session folders, <code>choose_next_seed</code> cycling path/method pairs.</li>
+<li><strong><code>mutations.py</code> (<code>MutationEngine</code>):</strong> bitflip, interesting integers, special chars, structured payload walking, <code>random_mutation</code>, <code>mutate_payload</code>.</li>
+<li>Supporting classifiers, session persistence, coverage helpers as previously merged.</li>
+</ul>
+<h3 id="4-2-ble-path">4.2 BLE path</h3>
+<ul>
+<li><strong><code>BLE/Smartlock.py</code>:</strong> async AFL-like loop—queue, <code>mutate_input</code>, <code>assign_energy</code>, <code>choose_next</code>, interestingness, reconnect cadence, resume JSON.</li>
+<li><strong><code>BLEClient</code>:</strong> connect / write / log helpers.</li>
+<li>Launcher wiring through <strong><code>main.py</code></strong> interactive commands.</li>
+</ul>
+<h3 id="4-3-why-the-baseline-matters">4.3 Why the baseline matters</h3>
+<p>Medium/large changes <strong>deliberately grafted</strong> new schedulers / corpus / telemetry onto these loops. Review value is almost entirely about whether reviewers notice <strong>incomplete grafts</strong>—not whether new files parse as Python.</p>
+<hr/>
+<h2 id="5-code-changes-by-tier-exhaustive-inventory">5. Code changes by tier (exhaustive inventory)</h2>
+<h3 id="5-1-small-develop-1-93-8-across-3-files">5.1 Small — <code>develop-1</code> — +93 / −8 across 3 files</h3>
+<div class="table-wrap"><table>
+<tr><th>File</th><th>Approx Δ</th><th>What changed</th><th>Intent</th></tr>
+<tr><td><code>main.py</code></td><td>+11 / −5</td><td>Bare <code>BLE</code> early-return; resume path resolved to absolute</td><td>CLI matches README / <code>run.sh</code>; resume loads reliably</td></tr>
+<tr><td><code>mutations.py</code></td><td>+70 / −2</td><td><code>dictionary_tokens</code>, <code>dictionary_insert</code>, <code>splice</code>, <code>_record_strategy</code>; strategies extended</td><td>AFL-like dictionary + splice diversity</td></tr>
+<tr><td><code>simple_fuzzer2.py</code></td><td>+15 / −3</td><td>Crash-hot havoc bias; ~15% same-path splice</td><td>More mutation stack near crashy endpoints</td></tr>
+</table></div>
+<p><strong>Crux:</strong> Refine mutations + BLE ergonomics; no architecture rewrite.  </p>
+<p><strong>Risk if unreviewed:</strong> Low. Worst case: mutation mix shifts; resume mismatch is <em>fixed</em> by the PR.</p>
+<h3 id="5-2-medium-unique-develop-1-develop-2-525-13-across-6-files">5.2 Medium — unique <code>develop-1</code>→<code>develop-2</code> — +525 / −13 across 6 files</h3>
+<div class="table-wrap"><table>
+<tr><th>File</th><th>Δ</th><th>What changed</th><th>Intent</th></tr>
+<tr><td><code>power_schedule.py</code></td><td>+249 (new)</td><td>Modes explore/exploit/COE/fast/linear/quad; <code>SeedStats</code>; <code>calculate_energy</code>; summary</td><td>AFL-like HTTP energy</td></tr>
+<tr><td><code>ble_energy.py</code></td><td>+144 (new)</td><td><code>BLEEnergyScheduler</code>, transitions, <code>record</code>, <code>energy_for</code>, <code>rank_queue</code>, <code>splice_sequences</code></td><td>BLE novelty/crash-aware energy</td></tr>
+<tr><td><code>dictionaries/http_api.dict</code></td><td>+42 (new)</td><td>HTTP/API tokens</td><td>Richer dictionary mutations</td></tr>
+<tr><td><code>mutations.py</code></td><td>+22</td><td><code>from_dictionary_file</code> AFL dict parser</td><td>Load tokens from file</td></tr>
+<tr><td><code>simple_fuzzer2.py</code></td><td>+43 / −~8</td><td>Dict engine; <code>PowerSchedule</code>; energy blend; persist snapshot; <code>record_execution</code></td><td>Connect schedule to HTTP fuzzer</td></tr>
+<tr><td><code>BLE/Smartlock.py</code></td><td>+38 / −~7</td><td>Scheduler import; interesting-byte; donor-capable mutate; energy/choose via scheduler</td><td>Connect schedule to BLE fuzzer</td></tr>
+</table></div>
+<p><strong>Crux:</strong> Add scheduling subsystems. <strong>Latent bug class:</strong> read paths wired; write/donor paths not.  </p>
+<p><strong>Risk if unreviewed:</strong> High—feature appears shipped; BLE energy never learns; identical HTTP bodies share energy across endpoints.</p>
+<h3 id="5-3-large-unique-develop-2-develop-3-1821-9-across-8-files">5.3 Large — unique <code>develop-2</code>→<code>develop-3</code> — +1821 / −9 across 8 files</h3>
+<div class="table-wrap"><table>
+<tr><th>File</th><th>Δ</th><th>What changed</th><th>Intent</th></tr>
+<tr><td><code>corpus_manager.py</code></td><td>+316 (new)</td><td>Weighted corpus, favoritism, persistence, selection APIs</td><td>AFL-like queue</td></tr>
+<tr><td><code>coverage_bitmap.py</code></td><td>+252 (new)</td><td>Outcome edges, interesting scores</td><td>Lightweight coverage</td></tr>
+<tr><td><code>crash_triage.py</code></td><td>+292 (new)</td><td>Signatures, dedup, optional minimize</td><td>Crash hygiene</td></tr>
+<tr><td><code>fuzz_stats.py</code></td><td>+208 (new)</td><td>Counters; crashes counted iff <code>reveals_bug and bug_id</code></td><td>Campaign metrics</td></tr>
+<tr><td><code>havoc_stage.py</code></td><td>+202 (new)</td><td>Stacked havoc</td><td>Mutation depth</td></tr>
+<tr><td><code>seed_minimizer.py</code></td><td>+198 (new)</td><td>Structural trim with interestingness predicate</td><td>Seed minimization</td></tr>
+<tr><td><code>session_replay.py</code></td><td>+217 (new)</td><td>Replay helpers + HTML report</td><td>Artifacts</td></tr>
+<tr><td><code>simple_fuzzer2.py</code></td><td>+145 / −~9</td><td>Wire all of the above into metrics / sessions / mutations</td><td>Integration</td></tr>
+</table></div>
+<p><strong>Crux:</strong> Full greybox pipeline. <strong>Latent bug class:</strong> telemetry plumbing, API contracts, corpus not selected, dishonest minimizer predicate.  </p>
+<p><strong>Risk if unreviewed:</strong> Very high—dashboards lie; favored corpus polluted; new corpus unused for live selection.</p>
+<h3 id="5-4-cumulative-loc-vs-main">5.4 Cumulative LOC vs <code>main</code></h3>
+<div class="table-wrap"><table>
+<tr><th>Branch tip (code)</th><th>Insertions</th><th>Deletions</th></tr>
+<tr><td><code>develop-1</code></td><td>93</td><td>8</td></tr>
+<tr><td><code>develop-2</code></td><td>618</td><td>21</td></tr>
+<tr><td><code>develop-3</code></td><td>2432</td><td>23</td></tr>
+</table></div>
+<hr/>
+<h2 id="6-how-greptile-works">6. How Greptile works</h2>
+<h3 id="6-1-indexing-graph-construction">6.1 Indexing / graph construction</h3>
+<p>When a repository is connected, Greptile builds a <strong>complete graph</strong> of code elements:</p>
+<ol>
+<li><strong>Parse</strong> files → extract directories, files, functions, classes, variables (AST-level structure).</li>
+<li><strong>Map relationships</strong> → function calls, imports, dependencies, variable usage.</li>
+<li><strong>Store</strong> the graph for query during reviews.</li>
+</ol>
+<p>Secondary writeups of Greptile-style semantic graphs also mention natural-language summaries per unit, <strong>embeddings</strong> in a vector store, and edges for call/import <strong>and</strong> embedding similarity. Core product claim: reviews reason about <strong>ripple effects beyond the diff</strong>.</p>
+<h3 id="6-2-v3-agentic-detective-loop">6.2 v3 agentic detective loop</h3>
+<p>Greptile v3 replaced a rigid flowchart (diff → fixed context → comments) with a loop that can repeatedly:</p>
+<ul>
+<li>search the codebase,</li>
+<li>follow nested calls,</li>
+<li>compare similar implementations,</li>
+<li>optionally consult git history,</li>
+<li>apply learned rules,</li>
+</ul>
+<p>with high tool/inference budgets. Vendor-published v3 metrics include large gains in upvote ratio and action rate versus v2, attributed partly to a higher “sureness” threshold (fewer low-confidence nits).</p>
+<h3 id="6-3-anatomy-of-a-greptile-pr-review">6.3 Anatomy of a Greptile PR review</h3>
+<ul>
+<li>Analyzing (👀, often ~3 minutes) → Complete (👍)</li>
+<li><strong>Summary:</strong> what the PR does + issues found</li>
+<li><strong>Confidence 0–5:</strong> merge readiness (5 = production ready; 2 = significant bugs / needs rework)</li>
+<li><strong>Inline comments</strong> with <strong>P0 / P1 / P2</strong> severity badges</li>
+<li><strong>Diagrams:</strong> sequence / ER / class / <strong>flow</strong> (flow diagrams appeared on our medium and large PRs)</li>
+<li>Suggested fixes; “Fix with your Agent”; learning via reactions</li>
+</ul>
+<h3 id="6-4-optional-capabilities">6.4 Optional capabilities</h3>
+<p>Custom rules, cross-repo clusters, MCP IDE tools, analytics, <strong>TREX</strong> (write/run tests in an isolated sandbox; attach logs/screenshots/traces). Public billing messaging centers on seats + credits (TREX reviews consume more credits than standard reviews)—confirm current pricing in-product.</p>
+<hr/>
+<h2 id="7-how-copilot-works">7. How Copilot works</h2>
+<h3 id="7-1-github-copilot-code-review-product">7.1 GitHub Copilot code review (product)</h3>
+<ul>
+<li>Reviews any language; often suggests one-click fixes.</li>
+<li>Trigger: reviewers sidebar, auto-review policies, or CLI.</li>
+<li><strong>Lite</strong> vs <strong>Balanced</strong> effort (Balanced routes to higher-reasoning analysis; more AI credits).</li>
+<li>Agentic capabilities: full project context gathering (Actions runners); pass suggestions to Copilot cloud agent; MCP servers / agent skills when configured.</li>
+<li>Always a <strong>Comment</strong> review—does not block merges via required approvals.</li>
+<li>Cost: AI credits + Actions minutes for agentic features; some files excluded.</li>
+</ul>
+<h3 id="7-2-copilot-in-this-experiment-cursor-bugbot">7.2 Copilot in this experiment (Cursor Bugbot)</h3>
+<ul>
+<li>Local/branch diff review with severity findings.</li>
+<li>No confidence score, no Mermaid, no automatic GitHub inline threads unless pasted.</li>
+<li>Here: behaved as a <strong>strong static integration reviewer</strong>, not a style-nit bot.</li>
+</ul>
+<h3 id="7-3-implications-for-the-four-way-comparison">7.3 Implications for the four-way comparison</h3>
+<p>The Copilot column is the <strong>best available automated “standard” reviewer we could actually run</strong>. External validity to GitHub Copilot Balanced should be re-checked when credits return.</p>
+<hr/>
+<h2 id="8-how-human-in-the-loop-review-works">8. How human-in-the-loop review works</h2>
+<h3 id="8-1-ideal-human-process-on-these-prs">8.1 Ideal human process on these PRs</h3>
+<ol>
+<li>Read PR description / commits for intent (scheduling, corpus, telemetry).</li>
+<li>Skim new modules for API surface (<code>record</code>, <code>note_iteration</code>, <code>trim</code>, choose/select).</li>
+<li><strong>Find references</strong> from campaign loops to those APIs.</li>
+<li>Trace one HTTP iteration and one BLE iteration end-to-end on paper.</li>
+<li>Ask what <code>power_schedule.json</code> / HTML campaign report would show after 100 iterations.</li>
+<li>Optionally run a short fuzz smoke or unit-instantiate new classes.</li>
+<li>Leave blocking comments on unwired edges; approve only after fixes or explicit follow-ups.</li>
+</ol>
+<h3 id="8-2-realistic-human-failure-modes-applied-here">8.2 Realistic human failure modes (applied here)</h3>
+<ul>
+<li><strong>Diff fatigue</strong> on +2400 LOC: deep-read new files; skim wiring in <code>simple_fuzzer2.py</code>.</li>
+<li><strong>Completeness illusion:</strong> <code>ble_energy.py</code> looks finished → skip call-site audit.</li>
+<li><strong>Author bias</strong> if the same person wrote and reviewed.</li>
+<li><strong>Time boxing:</strong> catch two of five issues; ship the rest.</li>
+<li><strong>Under-weighting</strong> “reports show zero crashes” without running a campaign.</li>
+</ul>
+<h3 id="8-3-what-humans-uniquely-catch-bots-weak">8.3 What humans uniquely catch (bots weak)</h3>
+<ul>
+<li>Whether dictionary tokens are appropriate for the target (ethics / scope).</li>
+<li>Whether BLE reconnect/sleep constants remain sane under higher energy.</li>
+<li>Whether three stacked PRs to <code>main</code> is the right merge strategy.</li>
+<li>Whether HTTP status/body hashing is scientifically meaningful “coverage” versus marketing language.</li>
+</ul>
+<hr/>
+<h2 id="9-what-no-reviewer-implies">9. What “no reviewer” implies</h2>
+<p>Counterfactual: each PR merges as authored.</p>
+<div class="table-wrap"><table>
+<tr><th>Tier</th><th>Likely production outcome without review</th></tr>
+<tr><td>Small</td><td>Mostly fine; richer mutations; BLE resume fixed</td></tr>
+<tr><td>Medium</td><td>BLE scheduler never learns; splice dead; HTTP energy conflates identical bodies across endpoints; engineers may “tune” schedules that are not learning</td></tr>
+<tr><td>Large</td><td>Coverage buckets collapse; crash HTML/stats show <strong>0</strong>; minimized junk favored; on-disk corpus diverges from live <code>SeedQ</code> selection</td></tr>
+</table></div>
+<p><strong>Additional risk:</strong> dictionary tokens include XSS/SQLi-like strings—expected for a fuzzer, dangerous if aimed at production without isolation. No reviewer also means no confirmation of target-environment assumptions.</p>
+<hr/>
+<h2 id="10-greptile-tool-use-on-these-prs">10. Greptile tool use on these PRs</h2>
+<div class="table-wrap"><table>
+<tr><th>Capability</th><th>Observed?</th><th>Evidence</th></tr>
+<tr><td>Graph / index queries</td><td><strong>Strongly indicated</strong></td><td>Cross-file contracts; files-needing-attention lists; missing-edge diagrams</td></tr>
+<tr><td>Agentic codebase search</td><td><strong>Strongly indicated</strong></td><td>Outside-diff donor call; <code>FuzzStatsCollector</code> conjunction defined in another new file</td></tr>
+<tr><td>Learned rules / memory</td><td>Not evidenced</td><td>Fresh experiment; no training window</td></tr>
+<tr><td>Custom <code>greptile.json</code></td><td>No</td><td>Not present in repo</td></tr>
+<tr><td>Cross-repo clusters</td><td>N/A</td><td>Single repository</td></tr>
+<tr><td>TREX sandbox</td><td><strong>No</strong></td><td>No logs, screenshots, or generated tests attached to comments</td></tr>
+<tr><td>Fix-with-Agent UX</td><td>Product feature</td><td>Not evaluated as a remediation workflow</td></tr>
+</table></div>
+<p><strong>Conclusion:</strong> Greptile used <strong>static graph/search reasoning + diagram generation</strong>. It did <strong>not</strong> demonstrate runtime proof via TREX on these PRs.</p>
+<hr/>
+<h2 id="11-tier-results-small-pr-1">11. Tier results — Small (PR #1)</h2>
+<h3 id="11-1-greptile">11.1 Greptile</h3>
+<ul>
+<li>Confidence <strong>5/5</strong>.</li>
+<li>Accurate summary: bare <code>BLE</code>, absolute resume paths, dictionary insert, splice, strategy telemetry, crash-associated intensity.</li>
+<li>Inline defects: none.</li>
+<li>Noted BLE entry-point changes match the downstream loader contract.</li>
+</ul>
+<h3 id="11-2-copilot">11.2 Copilot</h3>
+<ul>
+<li><strong>0 bugs.</strong></li>
+</ul>
+<h3 id="11-3-human-in-the-loop-alone-modeled">11.3 Human-in-the-loop alone (modeled)</h3>
+<ul>
+<li><strong>Likely:</strong> approve after confirming absolute resume path reaches <code>start_ble_fuzzing</code> / existence checks.</li>
+<li><strong>Maybe:</strong> note <code>strategy_hits</code> never persisted/exported.</li>
+<li><strong>Unlikely:</strong> invent false blockers.</li>
+</ul>
+<h3 id="11-4-no-reviewer">11.4 No reviewer</h3>
+<ul>
+<li>Ships an acceptable small improvement.</li>
+</ul>
+<h3 id="11-5-four-way-verdict-small">11.5 Four-way verdict (small)</h3>
+<div class="table-wrap"><table>
+<tr><th>Regime</th><th>Outcome quality</th><th>Value add</th></tr>
+<tr><td>No reviewer</td><td>Acceptable</td><td>Velocity</td></tr>
+<tr><td>Copilot</td><td>Acceptable (clean bill)</td><td>Confirmation</td></tr>
+<tr><td>Greptile</td><td>Acceptable + confidence 5/5</td><td>Stakeholder packaging</td></tr>
+<tr><td>Human alone</td><td>Acceptable</td><td>Intent check</td></tr>
+</table></div>
+<p><strong>ROI of paid automation on small clean PRs: low.</strong></p>
+<hr/>
+<h2 id="12-tier-results-medium-pr-2">12. Tier results — Medium (PR #2)</h2>
+<h3 id="12-1-greptile-confidence-2-5">12.1 Greptile (confidence 2/5)</h3>
+<ul>
+<li><strong>P1:</strong> BLE scheduler scores stay empty (<code>record</code> never called).</li>
+<li><strong>P1:</strong> Endpoint statistics conflated (payload-only fingerprint).</li>
+<li><strong>Outside-diff:</strong> BLE splicing unreachable (no donor argument).</li>
+<li><strong>Mermaid:</strong> missing <code>record</code> edge + donor-not-supplied edge.</li>
+</ul>
+<h3 id="12-2-copilot">12.2 Copilot</h3>
+<div class="table-wrap"><table>
+<tr><th>Severity</th><th>Finding</th></tr>
+<tr><td>high</td><td><code>ble_scheduler.record()</code> never called</td></tr>
+<tr><td>medium</td><td>donor splice never invoked</td></tr>
+<tr><td>medium</td><td>payload-only schedule keys</td></tr>
+<tr><td>medium</td><td><code>coverage_gain</code> always defaults to 0 at call site</td></tr>
+<tr><td>low</td><td>dictionary loader corrupts tokens containing <code>=</code> and <code>&quot;</code></td></tr>
+</table></div>
+<p>Soft/disputed: claim that dictionary tokens never reach <code>mutate_payload</code>—<code>mutate_payload</code> → <code>random_mutation</code> can still select <code>dictionary_insert</code>.</p>
+<h3 id="12-3-human-in-the-loop-alone-modeled">12.3 Human-in-the-loop alone (modeled)</h3>
+<ul>
+<li><strong>High:</strong> notice <code>mutate_input(seed)</code> vs new donor parameter if carefully reviewing <code>Smartlock.py</code>.</li>
+<li><strong>High:</strong> ask “who calls <code>record</code>?” when reading <code>ble_energy.py</code>.</li>
+<li><strong>Medium:</strong> catch payload-only fingerprint (requires multi-endpoint mental model).</li>
+<li><strong>Lower:</strong> catch dict <code>=</code>/<code>&quot;</code> parse without adversarial examples.</li>
+<li><strong>Medium:</strong> miss <code>coverage_gain</code> omission (defaults hide bugs).</li>
+</ul>
+<h3 id="12-4-no-reviewer">12.4 No reviewer</h3>
+<ul>
+<li>Merges <strong>broken BLE learning</strong> and <strong>cross-endpoint schedule bleed</strong>.</li>
+</ul>
+<h3 id="12-5-four-way-verdict-medium">12.5 Four-way verdict (medium)</h3>
+<p>Automation (Greptile <strong>or</strong> Copilot) substantially beats no reviewer. Human alone can match if diligent. Greptile wins packaging; Copilot slightly broader issue list.</p>
+<hr/>
+<h2 id="13-tier-results-large-pr-3">13. Tier results — Large (PR #3)</h2>
+<h3 id="13-1-greptile-confidence-2-5">13.1 Greptile (confidence 2/5)</h3>
+<ul>
+<li><strong>P1:</strong> Response telemetry loses outcomes (<code>s_prime</code> fields unset).</li>
+<li><strong>P1:</strong> Crash identifiers dropped (<code>bug_id</code> / <code>FuzzStatsCollector</code> conjunction).</li>
+<li><strong>P1:</strong> Minimization discards coverage behavior (<code>lambda candidate: True</code>).</li>
+<li><strong>Mermaid:</strong> result fields not copied; <code>bug_id</code> not forwarded; minimizer → favored corpus.</li>
+<li><strong>Files needing attention:</strong> <code>simple_fuzzer2.py</code>, <code>fuzz_stats.py</code>, <code>coverage_bitmap.py</code>, <code>crash_triage.py</code>, <code>seed_minimizer.py</code>, <code>corpus_manager.py</code>.</li>
+</ul>
+<h3 id="13-2-copilot">13.2 Copilot</h3>
+<div class="table-wrap"><table>
+<tr><th>Severity</th><th>Finding</th></tr>
+<tr><td>high</td><td>response metadata never attached to <code>s_prime</code> before coverage/triage/stats</td></tr>
+<tr><td>high</td><td><code>bug_id</code> omitted → crash stats stay 0</td></tr>
+<tr><td>medium</td><td><code>mark_result</code> treats rarity / interesting_score as coverage gain</td></tr>
+<tr><td>medium</td><td><code>CorpusManager</code> populated/persisted but <code>choose_next_seed</code> still uses only <code>SeedQ</code></td></tr>
+</table></div>
+<h3 id="13-3-human-in-the-loop-alone-modeled">13.3 Human-in-the-loop alone (modeled)</h3>
+<ul>
+<li><strong>High:</strong> “where do status_code/body get onto <code>s_prime</code>?” if tracing one request.</li>
+<li><strong>High/medium:</strong> <code>bug_id</code> plumbing if they open <code>fuzz_stats.py</code>.</li>
+<li><strong>Medium:</strong> spot <code>lambda: True</code> as a smell; may rationalize as “structural only.”</li>
+<li><strong>Medium/low under fatigue:</strong> notice corpus never selected (long <code>choose_next_seed</code> after seven new modules).</li>
+<li><strong>Unique human:</strong> challenge whether HTTP status/body bitmap is valid research “coverage.”</li>
+</ul>
+<h3 id="13-4-no-reviewer">13.4 No reviewer</h3>
+<ul>
+<li>Merges <strong>lying dashboards</strong>, <strong>polluted favored corpus</strong>, and a <strong>dead corpus manager</strong> relative to live selection—the worst blind-merge tier.</li>
+</ul>
+<h3 id="13-5-four-way-verdict-large">13.5 Four-way verdict (large)</h3>
+<p>No reviewer fails hard. Greptile ∪ Copilot covers nearly the full defect set. Human alone can catch critical telemetry but is least consistent on orphans under fatigue. Ideal: <strong>human + (Greptile or Copilot)</strong>.</p>
+<hr/>
+<h2 id="14-master-finding-matrix-four-way">14. Master finding matrix (four-way)</h2>
+<p>Legend: ✓ detected · ~ partial/possible · ✗ not detected · n/a · <strong>H</strong> = modeled human likelihood</p>
+<div class="table-wrap"><table>
+<tr><th>Finding</th><th>Tier</th><th>Graph-ish?</th><th>No rev</th><th>Copilot</th><th>Greptile</th><th>Human alone</th></tr>
+<tr><td>Clean small / no false bugs</td><td>S</td><td>No</td><td>n/a</td><td>✓</td><td>✓</td><td>✓</td></tr>
+<tr><td>Unused <code>strategy_hits</code> export</td><td>S</td><td>No</td><td>✗</td><td>✗</td><td>✗</td><td>~</td></tr>
+<tr><td>BLE <code>record</code> never called</td><td>M</td><td><strong>Yes</strong></td><td>✗</td><td>✓</td><td>✓</td><td><strong>H high</strong></td></tr>
+<tr><td>BLE donor splice dead</td><td>M</td><td><strong>Yes</strong></td><td>✗</td><td>✓</td><td>✓</td><td><strong>H high</strong></td></tr>
+<tr><td>Schedule payload-only key</td><td>M</td><td>Partial</td><td>✗</td><td>✓</td><td>✓</td><td><strong>H med</strong></td></tr>
+<tr><td><code>coverage_gain</code> always 0</td><td>M</td><td><strong>Yes</strong></td><td>✗</td><td>✓</td><td>✗</td><td><strong>H med-low</strong></td></tr>
+<tr><td>Dict <code>=</code>/<code>&quot;</code> parse bug</td><td>M</td><td>No</td><td>✗</td><td>✓</td><td>✗</td><td><strong>H low</strong></td></tr>
+<tr><td><code>s_prime</code> telemetry hole</td><td>L</td><td><strong>Yes</strong></td><td>✗</td><td>✓</td><td>✓</td><td><strong>H high</strong></td></tr>
+<tr><td><code>bug_id</code> drop / stats ∧</td><td>L</td><td><strong>Yes</strong></td><td>✗</td><td>✓</td><td>✓</td><td><strong>H high-med</strong></td></tr>
+<tr><td>Minimizer <code>lambda: True</code></td><td>L</td><td>Partial</td><td>✗</td><td>✗</td><td>✓</td><td><strong>H med</strong></td></tr>
+<tr><td>Corpus never selected</td><td>L</td><td><strong>Yes</strong></td><td>✗</td><td>✓</td><td>✗</td><td><strong>H med-low</strong></td></tr>
+<tr><td>Rarity-as-gain favoritism</td><td>L</td><td>Partial</td><td>✗</td><td>✓</td><td>✗</td><td><strong>H low-med</strong></td></tr>
+<tr><td>Confidence score / merge UX</td><td>—</td><td>Product</td><td>✗</td><td>✗</td><td>✓</td><td>~ (written approval)</td></tr>
+<tr><td>Missing-edge Mermaid</td><td>—</td><td>Product</td><td>✗</td><td>✗</td><td>✓</td><td>~ (whiteboard)</td></tr>
+<tr><td>Runtime proof (TREX/tests)</td><td>—</td><td>Exec</td><td>✗</td><td>✗</td><td>✗</td><td>~ if human runs smoke</td></tr>
+<tr><td>Product/ethics/methodology critique</td><td>—</td><td>Human</td><td>✗</td><td>✗</td><td>✗</td><td>✓ <strong>unique</strong></td></tr>
+</table></div>
+<h3 id="14-1-defect-detection-counts-medium-large-substantive-defects">14.1 Defect detection counts (medium+large substantive defects)</h3>
+<p>Counting ~10 substantive defects (excluding clean-PR row, pure UX rows, ethics):</p>
+<div class="table-wrap"><table>
+<tr><th>Regime</th><th>Detected</th><th>Missed</th><th>Notes</th></tr>
+<tr><td>No reviewer</td><td>0</td><td>10</td><td>By definition</td></tr>
+<tr><td>Copilot</td><td>8</td><td>2</td><td>Missed minimizer; soft miss on <code>strategy_hits</code></td></tr>
+<tr><td>Greptile</td><td>6</td><td>4</td><td>Missed coverage_gain, dict parse, corpus unused, rarity-as-gain</td></tr>
+<tr><td>Human alone</td><td>~5–8</td><td>~2–5</td><td>High variance; diligent mid ~6–7</td></tr>
+</table></div>
+<p><strong>Union(Copilot, Greptile) ≈ 9/10 substantive.</strong>  </p>
+<p><strong>Union(Human, either bot)</strong> approaches full coverage including ethics/methodology.</p>
+<hr/>
+<h2 id="15-graph-ast-necessity-analysis">15. Graph / AST necessity analysis</h2>
+<h3 id="15-1-strongly-requires-multi-hop-call-graph-dataflow">15.1 Strongly requires multi-hop / call-graph / dataflow</h3>
+<ol>
+<li>BLE <code>record</code> missing while readers exist.</li>
+<li>Donor never supplied.</li>
+<li><code>s_prime</code> field plumbing across loop → metrics → coverage/triage.</li>
+<li><code>bug_id</code> contract across classifier → metrics → <code>fuzz_stats</code>.</li>
+<li>Corpus module vs <code>choose_next_seed</code> still on <code>SeedQ</code>.</li>
+</ol>
+<h3 id="15-2-locally-visible-impact-needs-graph-policy-context">15.2 Locally visible; impact needs graph/policy context</h3>
+<ol>
+<li>Payload-only fingerprint.</li>
+<li><code>lambda: True</code> + favored corpus.</li>
+<li>Rarity term used as coverage gain.</li>
+</ol>
+<h3 id="15-3-local-lexical">15.3 Local / lexical</h3>
+<ol>
+<li>Dictionary parser <code>=</code>/<code>&quot;</code> heuristic.</li>
+</ol>
+<h3 id="15-4-critical-nuance">15.4 Critical nuance</h3>
+<p><strong>Graph reasoning mattered; Greptile’s hosted graph was not the only way to get it.</strong> Copilot (Cursor) performed several multi-hop detections without Greptile’s index. Humans with “Find References” do the same more slowly. Greptile’s differentiator is <strong>forcing that reasoning unattended on every PR</strong> plus packaging (confidence, diagrams).</p>
+<hr/>
+<h2 id="16-did-greptile-understand-the-crux">16. Did Greptile understand the crux?</h2>
+<div class="table-wrap"><table>
+<tr><th>Tier</th><th>Crux</th><th>Greptile understanding</th><th>Grade</th></tr>
+<tr><td>Small</td><td>Mutation refinements + BLE CLI</td><td>Exact</td><td>A</td></tr>
+<tr><td>Medium</td><td>Schedulers must <em>learn</em> via feedback</td><td>Explicitly called out unreachable feedback/splice</td><td>A</td></tr>
+<tr><td>Large</td><td>Pipeline must plumb results/IDs; honest minimize</td><td>Explicit telemetry / <code>bug_id</code> / predicate failures</td><td>A</td></tr>
+</table></div>
+<p>Greptile did <strong>not</strong> fully inventory every orphan (corpus selection). Intent understanding was excellent; defect-search completeness was very good but not perfect.</p>
+<hr/>
+<h2 id="17-volume-vs-normal-review">17. Volume vs normal review</h2>
+<div class="table-wrap"><table>
+<tr><th>Expectation</th><th>No rev</th><th>Copilot</th><th>Greptile</th><th>Human</th></tr>
+<tr><td>Style nit flood</td><td>—</td><td>No</td><td>No</td><td>Sometimes</td></tr>
+<tr><td>Restate PR only</td><td>—</td><td>No—issues filed</td><td>No—issues filed</td><td>Varies</td></tr>
+<tr><td>Comment count</td><td>0</td><td>Medium, broader</td><td>Low, high severity</td><td>Variable</td></tr>
+<tr><td>False positives</td><td>—</td><td>One soft FP</td><td>Very low here</td><td>Possible bikesheds</td></tr>
+<tr><td>vs noisy linter bot</td><td>—</td><td>Fewer, better</td><td>Fewer, better</td><td>N/A</td></tr>
+</table></div>
+<p>Greptile delivered <strong>more severity-weighted value than a normal linter bot</strong>, not more raw comments than Copilot.</p>
+<hr/>
+<h2 id="18-pros-and-cons-four-way">18. Pros and cons (four-way)</h2>
+<h3 id="18-1-no-reviewer">18.1 No reviewer</h3>
+<p><strong>Pros:</strong> Instant merge; zero seat cost; no review thrash.  </p>
+<p><strong>Cons:</strong> Blind to integration orphans; lying metrics on large tier; no institutional memory; unacceptable for this defect class.</p>
+<h3 id="18-2-copilot">18.2 Copilot</h3>
+<p><strong>Pros:</strong> Strong defect recall here; catches extras Greptile missed; fits IDE workflow; GitHub product offers Balanced/MCP path.  </p>
+<p><strong>Cons:</strong> Credits/access blocked the product; Cursor path not always-on GitHub; no confidence/diagram packaging; missed minimizer; soft FP risk; Comment-only reviews do not gate merges.</p>
+<h3 id="18-3-greptile">18.3 Greptile</h3>
+<p><strong>Pros:</strong> Always-on; confidence scores; Mermaid; P-levels; true integration P1s; crux-aware summaries; optional TREX/rules/learning.  </p>
+<p><strong>Cons:</strong> Paid; missed several real issues; TREX unused here; paraphrased names; dense HTML summaries; overlap with Copilot reduces uniqueness-for-price.</p>
+<h3 id="18-4-human-in-the-loop-alone">18.4 Human-in-the-loop alone</h3>
+<p><strong>Pros:</strong> Intent/ethics/methodology; can run smokes; accountable decisions; best at “should we build this.”  </p>
+<p><strong>Cons:</strong> Slow; inconsistent; fatigues on large diffs; expensive senior time; may miss exact orphans bots found; not 24/7.</p>
+<hr/>
+<h2 id="19-cost-latency-and-process-friction">19. Cost, latency, and process friction</h2>
+<div class="table-wrap"><table>
+<tr><th>Regime</th><th>Latency</th><th>Direct $</th><th>Friction</th></tr>
+<tr><td>No reviewer</td><td>Minutes</td><td>$0</td><td>Deferred incident/debug cost</td></tr>
+<tr><td>Copilot (Cursor)</td><td>Minutes–tens of minutes (manual)</td><td>Cursor subscription (often sunk)</td><td>Must remember to run</td></tr>
+<tr><td>Copilot (GitHub product)</td><td>Seconds–minutes</td><td>AI credits / plan</td><td>Org policy enablement</td></tr>
+<tr><td>Greptile</td><td>~3 minutes typical</td><td>Seats + credits (+ TREX)</td><td>App install; tune nitpickiness</td></tr>
+<tr><td>Human alone</td><td>Hours for large PR</td><td>Salary / opportunity cost</td><td>Scheduling; context switch</td></tr>
+</table></div>
+<p>Greptile’s sticker price may be cheaper than a week debugging silent crash stats—yet <strong>redundant</strong> if Cursor/GitHub Copilot reviews are already mandatory and effective.</p>
+<hr/>
+<h2 id="20-failure-modes-and-pitfalls">20. Failure modes and pitfalls</h2>
+<h3 id="20-1-shared-automation-pitfalls">20.1 Shared automation pitfalls</h3>
+<ul>
+<li>Hallucinated APIs (not seen here).</li>
+<li>Over-confidence without runtime (no TREX / no human smoke).</li>
+<li>Missing product-level wrongness (what “coverage” means).</li>
+</ul>
+<h3 id="20-2-greptile-specific-pitfalls">20.2 Greptile-specific pitfalls</h3>
+<ul>
+<li>Outside-diff comments easy to miss in the GitHub UI.</li>
+<li>Assuming graph ⇒ unique findings (false vs Copilot in this study).</li>
+<li>Paying for TREX but leaving it disabled.</li>
+</ul>
+<h3 id="20-3-copilot-specific-pitfalls">20.3 Copilot-specific pitfalls</h3>
+<ul>
+<li>Credit exhaustion → silent absence (this experiment).</li>
+<li>Comment-only reviews do not block merge.</li>
+<li>Lite effort may under-analyze 2k LOC PRs (untested here).</li>
+</ul>
+<h3 id="20-4-human-specific-pitfalls">20.4 Human-specific pitfalls</h3>
+<ul>
+<li>Diff fatigue; author bias; “looks AFL-complete” illusion; time boxing; inconsistent depth.</li>
+</ul>
+<h3 id="20-5-no-reviewer-pitfalls">20.5 No-reviewer pitfalls</h3>
+<ul>
+<li>Exactly the medium/large outcomes in §9.</li>
+</ul>
+<hr/>
+<h2 id="21-scenario-playbooks">21. Scenario playbooks</h2>
+<h3 id="21-1-solo-researcher-cursor-already-paid">21.1 Solo researcher, Cursor already paid</h3>
+<p>Prefer <strong>human + Copilot (Cursor)</strong>. Add Greptile only if you want unattended GitHub comments for collaborators or future-you.</p>
+<h3 id="21-2-team-with-required-pr-reviews-on-github">21.2 Team with required PR reviews on GitHub</h3>
+<p>Prefer <strong>human + Greptile</strong> (or human + GitHub Copilot Balanced). Greptile’s confidence/diagrams help non-authors triage.</p>
+<h3 id="21-3-compliance-audit-narrative-needed">21.3 Compliance / audit narrative needed</h3>
+<p>Greptile’s persisted PR summaries + severity badges create an audit trail. Pair with human sign-off. No-reviewer fails audits; Copilot-only may lack merge packaging depending on setup.</p>
+<h3 id="21-4-maximum-defect-recall-on-a-scary-pr">21.4 Maximum defect recall on a scary PR</h3>
+<p>Run <strong>Greptile and Copilot</strong>, then human triage of the union. This study’s union caught nearly all substantive issues.</p>
+<h3 id="21-5-budget-cut">21.5 Budget cut</h3>
+<p>Cut Greptile before cutting human review. Cutting human and keeping only a bot is worse than the reverse for accountability—but cutting <em>both</em> automation and human on large integration PRs is worst.</p>
+<hr/>
+<h2 id="22-recommendation-and-buy-decision">22. Recommendation and buy decision</h2>
+<h3 id="22-1-ranked-postures-best-worst-for-this-codebase">22.1 Ranked postures (best → worst) for this codebase</h3>
+<ol>
+<li><strong>Human-in-the-loop + Greptile</strong> (or + Copilot): best defect union + accountability + packaging  </li>
+<li><strong>Human + Copilot</strong> if Greptile budget is tight and Cursor/GitHub Copilot is already paid  </li>
+<li><strong>Greptile alone</strong> or <strong>Copilot alone</strong>: far better than nothing; expect residual misses  </li>
+<li><strong>Human alone</strong>: acceptable with senior diligence; fragile under load / fatigue  </li>
+<li><strong>No reviewer</strong>: unacceptable for medium/large tiers</li>
+</ol>
+<h3 id="22-2-should-you-pay-for-greptile">22.2 Should you pay for Greptile?</h3>
+<div class="table-wrap"><table>
+<tr><th>Question</th><th>Answer</th></tr>
+<tr><td>vs no reviewer</td><td><strong>Yes</strong></td></tr>
+<tr><td>vs human alone</td><td><strong>Yes as a supplement</strong>, not a replacement</td></tr>
+<tr><td>vs Copilot already mandatory</td><td><strong>Situational</strong> — buy for unattended GitHub UX / diagrams / confidence; marginal unique defect rate</td></tr>
+<tr><td>Enable TREX if paying?</td><td><strong>Yes</strong>—otherwise leaving a major differentiator off</td></tr>
+<tr><td>Shop is mostly tiny clean PRs</td><td>Weak ROI</td></tr>
+</table></div>
+<h3 id="22-3-concrete-next-steps">22.3 Concrete next steps</h3>
+<ol>
+<li>Fix the union of P1/high findings on <code>develop-3</code> before merging any tier to <code>main</code>.  </li>
+<li>Re-run <strong>GitHub Copilot Balanced</strong> when credits return; append a true product column.  </li>
+<li>Enable <strong>TREX</strong> on a replay of PR #3; compare runtime evidence vs static comments.  </li>
+<li>Keep <strong>human approval required</strong> on <code>main</code>.</li>
+</ol>
+<hr/>
+<h2 id="23-appendices">23. Appendices</h2>
+<h3 id="appendix-a-verbatim-greptile-summaries-essence">Appendix A — Verbatim Greptile summaries (essence)</h3>
+<p><strong>PR #1:</strong> Expands AFL-style mutation behavior and adjusts BLE command handling; bare <code>BLE</code>; resolved resume paths; dictionary insertion; splicing; strategy telemetry; crash-associated intensity. Confidence <strong>5/5</strong>.</p>
+<p><strong>PR #2:</strong> Adds AFL-inspired HTTP/BLE scheduling, dictionary mutations, splicing, resume handling; BLE feedback scheduling and splicing unreachable; HTTP scheduling conflates identical payloads across endpoints. Confidence <strong>2/5</strong>. Files needing attention: <code>BLE/Smartlock.py</code>, <code>power_schedule.py</code>.</p>
+<p><strong>PR #2 P1 (empty scores):</strong> <code>assign_energy</code> / <code>choose_next</code> read scheduler without <code>ble_scheduler.record</code> → length-only energy.</p>
+<p><strong>PR #2 P1 (conflated stats):</strong> <code>ensure_stats</code> keys only on payload fingerprint → cross-endpoint bleed.</p>
+<p><strong>PR #2 outside-diff:</strong> <code>mutate_input(seed)</code> omits donor → splice unreachable.</p>
+<p><strong>PR #3:</strong> Adds corpus / coverage / scheduling / crash-triage / havoc / minimize / replay / report; loses request-result data and bug IDs before telemetry; unverified minimized payloads favored. Confidence <strong>2/5</strong>.</p>
+<p><strong>PR #3 P1 (telemetry):</strong> loop never copies status/body/error into <code>s_prime</code> → collapsed coverage / merged crashes.</p>
+<p><strong>PR #3 P1 (<code>bug_id</code>):</strong> <code>note_iteration</code> without <code>bug_id</code> while collector requires <code>reveals_bug and bug_id</code> → zero crashes in reports.</p>
+<p><strong>PR #3 P1 (minimizer):</strong> <code>lambda candidate: True</code> accepts every deletion; favored corpus polluted.</p>
+<h3 id="appendix-b-graph-hop-reconstructions">Appendix B — Graph-hop reconstructions</h3>
+<ul>
+<li><strong>BLE <code>record</code>:</strong> define scheduler → wire readers in <code>Smartlock.py</code> → search writers → zero <code>record</code> calls → length-only energy.  </li>
+<li><strong>Donor:</strong> new parameter → only call site omits donor → dead branch.  </li>
+<li><strong><code>s_prime</code>:</strong> metrics read fields → loop never sets them → coverage/triage degrade.  </li>
+<li><strong><code>bug_id</code>:</strong> classifier id → not passed → <code>fuzz_stats</code> conjunction → zero counts.  </li>
+<li><strong>Minimizer:</strong> <code>True</code> predicate → trim always succeeds → favored add → policy bug.  </li>
+<li><strong>Corpus unused:</strong> corpus <code>add</code>/<code>save</code> → <code>choose_next_seed</code> only uses <code>SeedQ</code> → architectural orphan.</li>
+</ul>
+<h3 id="appendix-c-confidence-and-counts">Appendix C — Confidence and counts</h3>
+<div class="table-wrap"><table>
+<tr><th>PR</th><th>Greptile conf</th><th>Greptile P1</th><th>Outside</th><th>Copilot H</th><th>Copilot M</th><th>Copilot L</th></tr>
+<tr><td>#1</td><td>5/5</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>#2</td><td>2/5</td><td>2</td><td>1</td><td>1</td><td>4</td><td>1</td></tr>
+<tr><td>#3</td><td>2/5</td><td>3</td><td>0</td><td>2</td><td>2</td><td>0</td></tr>
+</table></div>
+<h3 id="appendix-d-references">Appendix D — References</h3>
+<ol>
+<li>https://www.greptile.com/docs/introduction  </li>
+<li>https://www.greptile.com/docs/how-greptile-works/graph-based-codebase-context  </li>
+<li>https://www.greptile.com/docs/code-review/first-pr-review  </li>
+<li>https://www.greptile.com/docs/code-review/key-features  </li>
+<li>https://www.greptile.com/blog/greptile-v3-agentic-code-review  </li>
+<li>https://www.greptile.com/blog/trex-code-execution  </li>
+<li>https://docs.github.com/en/copilot/concepts/agents/code-review  </li>
+<li>https://docs.github.com/copilot/using-github-copilot/code-review/using-copilot-code-review  </li>
+<li>https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1 · <a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2">/pull/2</a> · <a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3">/pull/3</a></li>
+</ol>
+<h3 id="appendix-e-status-stamp">Appendix E — Status stamp</h3>
+<ul>
+<li>Greptile: complete on PRs #1–#3  </li>
+<li>GitHub Copilot product: unavailable  </li>
+<li>Copilot (Cursor Bugbot): complete  </li>
+<li>Human-in-the-loop: modeled (not a separate hired blind review)  </li>
+<li>No reviewer: counterfactual  </li>
+<li>TREX: not observed  </li>
+<li>Document revision: four-way comprehensive expansion with full HTML twin  </li>
+</ul>
+<h3 id="appendix-f-glossary">Appendix F — Glossary</h3>
+<ul>
+<li><strong>AST:</strong> Abstract Syntax Tree—structural parse of code.  </li>
+<li><strong>Call graph:</strong> nodes = functions; edges = calls.  </li>
+<li><strong>Dataflow:</strong> how values move across variables and calls.  </li>
+<li><strong>HITL:</strong> Human-in-the-loop.  </li>
+<li><strong>P0/P1/P2:</strong> Greptile severity badges.  </li>
+<li><strong>TREX:</strong> Greptile Test / Run / Execute sandbox agent.  </li>
+<li><strong>SeedQ:</strong> legacy HTTP seed queue inside <code>FuzzerClient</code>.  </li>
+</ul>
+</main>
+</div>
+</body>
+</html>
