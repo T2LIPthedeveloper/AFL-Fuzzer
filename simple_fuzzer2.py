@@ -13,6 +13,13 @@ import re
 import tabulate
 from mutations import MutationEngine
 from power_schedule import PowerSchedule, parse_schedule_mode
+from corpus_manager import CorpusManager
+from fuzz_stats import FuzzStatsCollector
+from coverage_bitmap import CoverageBitmap
+from crash_triage import CrashTriage
+from havoc_stage import HavocStage
+from seed_minimizer import SeedMinimizer
+from session_replay import write_campaign_report
 
 # --- Logging configuration ---
 # Set up a logger for the fuzzer with both file and console handlers
@@ -346,6 +353,23 @@ class FuzzerClient:
         schedule_mode = parse_schedule_mode(os.environ.get("AFL_POWER_SCHEDULE", "fast"))
         self.power_schedule = PowerSchedule(mode=schedule_mode)
         logger.info("Power schedule mode=%s", self.power_schedule.mode.value)
+
+        # Large-tier: corpus, campaign stats, coverage bitmap, crash triage, havoc
+        self.corpus = CorpusManager(max_size=int(os.environ.get("AFL_CORPUS_MAX", "4000")))
+        self.corpus.ingest_seedq(self.SeedQ)
+        self.fuzz_stats = FuzzStatsCollector(campaign_name="django-greybox-large")
+        self.coverage_bitmap = CoverageBitmap()
+        self.crash_triage = CrashTriage()
+        self.havoc = HavocStage(
+            mutation_engine=self.mutation_engine,
+            dictionary_tokens=getattr(self.mutation_engine, "dictionary_tokens", None),
+        )
+        self.seed_minimizer = SeedMinimizer()
+        logger.info(
+            "Large-tier ready: corpus=%s map=%s",
+            len(self.corpus),
+            self.coverage_bitmap.map_size,
+        )
     def load_openapi_spec(self, openapi_file):
         """Load the OpenAPI specification from a JSON file."""
         try:
@@ -528,13 +552,85 @@ class FuzzerClient:
                 self.crash_correlation[path][method] = 0
             self.crash_correlation[path][method] += 1
 
-        # Feed medium-tier schedule telemetry
+        # Feed schedule / corpus / coverage / campaign telemetry (large-tier)
         self.power_schedule.record_execution(
             seed,
             path,
             method,
             coverage_gain=float(coverage_gain or 0),
             reveals_bug=reveals_bug,
+        )
+        observation = self.coverage_bitmap.observe(
+            path,
+            method,
+            status_code=s_prime.get("status_code"),
+            body=s_prime.get("response_body"),
+            seed_id=seed_id,
+        )
+        coverage_score = self.coverage_bitmap.interesting_score(observation)
+        if is_interesting or reveals_bug or observation.get("is_new"):
+            self.corpus.add(
+                path,
+                method,
+                seed,
+                weight=1.5 if (is_interesting or observation.get("is_new")) else 1.2,
+                coverage_score=float(coverage_gain or coverage_score),
+                favored=True,
+                depth=1,
+            )
+            # Opportunistically trim newly interesting seeds
+            if is_interesting or observation.get("is_new"):
+                try:
+                    trim = self.seed_minimizer.trim(
+                        seed,
+                        still_interesting=lambda candidate: True,  # structural shrink only
+                    )
+                    if trim.success:
+                        self.corpus.add(
+                            path,
+                            method,
+                            trim.minimized,
+                            weight=1.7,
+                            coverage_score=float(coverage_gain or coverage_score) + 0.5,
+                            favored=True,
+                            depth=2,
+                            parent_id=seed_id,
+                        )
+                except Exception as exc:
+                    logger.debug("Seed trim skipped: %s", exc)
+        entry_id = None
+        for candidate in self.corpus.entries.values():
+            if candidate.path == path and candidate.method == method and candidate.seed == seed:
+                entry_id = candidate.entry_id
+                break
+        if entry_id:
+            self.corpus.mark_result(
+                entry_id,
+                coverage_gain=float(coverage_gain or coverage_score),
+                reveals_bug=reveals_bug,
+            )
+        if reveals_bug:
+            self.crash_triage.record(
+                path,
+                method,
+                s_prime.get("status_code", "CRASH"),
+                seed,
+                response_text=str(s_prime.get("response_body") or "")[:2000] or None,
+                error_text=str(s_prime.get("error") or "")[:2000] or None,
+            )
+        try:
+            payload_bytes = len(json.dumps(seed, default=str))
+        except TypeError:
+            payload_bytes = 0
+        self.fuzz_stats.note_iteration(
+            path=path,
+            method=method,
+            status_code=s_prime.get("status_code"),
+            interesting=bool(is_interesting or observation.get("is_new")),
+            reveals_bug=reveals_bug,
+            payload_bytes=payload_bytes,
+            coverage_gain=float(coverage_gain or coverage_score),
+            sample_payload=seed if reveals_bug else None,
         )
 
     def create_session_folder(self):
@@ -636,12 +732,37 @@ class FuzzerClient:
         with open(os.path.join(self.session_folder, "bug_summary.txt"), "w") as f:
             f.write(self.bug_classifier.generate_summary_table())
 
-        # Persist medium-tier power-schedule snapshot
+        # Persist large-tier artifacts: schedule, corpus, coverage, crashes, report
         try:
             with open(os.path.join(self.session_folder, "power_schedule.json"), "w") as f:
                 json.dump(self.power_schedule.summary(), f, indent=2)
+            self.corpus.save(self.session_folder)
+            self.coverage_bitmap.save(self.session_folder)
+            self.crash_triage.save(self.session_folder)
+            self.fuzz_stats.note_mutations(getattr(self.mutation_engine, "strategy_hits", {}))
+            self.fuzz_stats.note_mutations(self.havoc.summary())
+            self.fuzz_stats.save(self.session_folder)
+            with open(os.path.join(self.session_folder, "seed_minimizer.json"), "w") as f:
+                json.dump(self.seed_minimizer.summary(), f, indent=2)
+            write_campaign_report(
+                self.session_folder,
+                title="AFL-Fuzzer large-tier campaign report",
+                power_summary=self.power_schedule.summary(),
+                corpus_summary=self.corpus.summary(),
+                fuzz_stats=self.fuzz_stats.snapshot(),
+                coverage_summary=self.coverage_bitmap.summary(),
+                crash_summary={
+                    "unique_crashes": len(self.crash_triage.cases),
+                    "total_crashes": self.crash_triage.total_crashes,
+                },
+                havoc_stats=self.havoc.summary(),
+                extra_notes=[
+                    "Includes develop-1 mutation refinements, develop-2 power schedule,",
+                    "and develop-3 corpus/coverage/triage/havoc/minimizer pipeline.",
+                ],
+            )
         except Exception as exc:
-            logger.warning("Failed to persist power schedule snapshot: %s", exc)
+            logger.warning("Failed to persist large-tier session artifacts: %s", exc)
         
         logger.info(f"Session data saved to {self.session_folder}")
 
@@ -670,12 +791,18 @@ class FuzzerClient:
         else:
             mutation_count = random.randint(4, 12)
         
-        # Use the MutationEngine defined in mutations.py instead of custom mutation functions to produce a mutated seed (test case)
-        mutated_seed = self.mutation_engine.mutate_payload(seed, num_mutations=mutation_count)
-        # Occasional cross-seed splice against another corpus entry for the same path
-        if random.random() < 0.15 and path in self.SeedQ and self.SeedQ[path].get("seeds"):
-            donor = random.choice(self.SeedQ[path]["seeds"])
-            mutated_seed = self.mutation_engine.splice(mutated_seed, donor)
+        # Use MutationEngine + occasional havoc stage for deeper stacked mutations
+        if random.random() < havoc_bias:
+            donor = None
+            if path in self.SeedQ and self.SeedQ[path].get("seeds"):
+                donor = random.choice(self.SeedQ[path]["seeds"])
+            mutated_seed = self.havoc.havoc(seed, energy=mutation_count, donor=donor)
+        else:
+            mutated_seed = self.mutation_engine.mutate_payload(seed, num_mutations=mutation_count)
+            # Occasional cross-seed splice against another corpus entry for the same path
+            if random.random() < 0.15 and path in self.SeedQ and self.SeedQ[path].get("seeds"):
+                donor = random.choice(self.SeedQ[path]["seeds"])
+                mutated_seed = self.mutation_engine.splice(mutated_seed, donor)
         
         # Generate a unique hash for this mutation to track it
         mutation_id = hashlib.md5(
