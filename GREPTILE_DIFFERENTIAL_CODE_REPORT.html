@@ -1,53 +1,95 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Greptile vs Standard Reviewers — Differential Report</title>
-  <style>
-    :root { --bg:#0f1419; --card:#1b222c; --text:#e7ecf1; --muted:#9aa7b5; --accent:#9ecbff; --good:#7dcea0; --bad:#f5b7b1; --warn:#f9e79f; }
-    body { font-family: ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 32px; line-height: 1.5; max-width: 960px; }
-    h1,h2,h3 { color: var(--accent); }
-    .card { background: var(--card); border-radius: 12px; padding: 20px 24px; margin: 16px 0; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a3441; vertical-align: top; }
-    .yes { color: var(--good); font-weight: 600; }
-    .no { color: var(--bad); font-weight: 600; }
-    .warn { color: var(--warn); font-weight: 600; }
-    a { color: var(--accent); }
-    code { background: #10161d; padding: 1px 6px; border-radius: 4px; }
-    .verdict { font-size: 1.05rem; }
-  </style>
+<meta charset="utf-8"/>
+<title>Greptile vs Copilot — Comprehensive Differential Report</title>
+<style>
+:root{--bg:#0b0f14;--card:#151b24;--text:#e8eef5;--muted:#93a0b0;--acc:#8ec7ff;--good:#7dcea0;--bad:#f5b7b1;--warn:#f0e068}
+*{box-sizing:border-box}
+body{font-family:ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:28px;line-height:1.55;max-width:1100px}
+h1,h2,h3{color:var(--acc);margin-top:1.4em}
+.card{background:var(--card);border-radius:12px;padding:18px 22px;margin:14px 0}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #2a3441;vertical-align:top}
+.yes{color:var(--good);font-weight:600}.no{color:var(--bad);font-weight:600}.warn{color:var(--warn);font-weight:600}
+a{color:var(--acc)}code{background:#0d1218;padding:1px 6px;border-radius:4px}
+.note{color:var(--muted);font-size:.9rem}
+nav a{margin-right:12px}
+</style>
 </head>
 <body>
-  <h1>Greptile Differential Report</h1>
-  <p class="verdict card"><strong>Verdict:</strong> Greptile’s cross-file findings on medium/large PRs were valuable. Copilot was <span class="no">unavailable</span> (credits/access). <strong>Cursor Bugbot</strong> (standard stand-in) <span class="yes">heavily overlapped</span> Greptile on critical dataflow bugs; each tool still found unique issues. Paying for Greptile is <span class="warn">situational</span> vs Cursor—strongest for always-on GitHub UX, confidence scores, and policy bugs Cursor missed.</p>
+<h1>Greptile vs Copilot Differential Report</h1>
+<p class="note">In this experiment, <strong>Copilot</strong> = Cursor Bugbot/agent review (GitHub Copilot product unavailable due to credits/access). Full narrative: <code>GREPTILE_DIFFERENTIAL_CODE_REPORT.md</code>.</p>
 
-  <div class="card">
-    <h2>PR ladder</h2>
-    <table>
-      <tr><th>Tier</th><th>PR</th><th>LOC</th><th>Greptile</th><th>Copilot</th><th>Cursor Bugbot</th></tr>
-      <tr><td>Small</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1">#1</a></td><td>+93/−8</td><td class="yes">5/5, 0 P1</td><td class="no">Missing</td><td class="yes">0 bugs</td></tr>
-      <tr><td>Medium</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2">#2</a></td><td>+618/−21</td><td class="yes">2/5, 2 P1</td><td class="no">Missing</td><td class="yes">1H + 4M + 1L</td></tr>
-      <tr><td>Large</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3">#3</a></td><td>+2432/−23</td><td class="yes">2/5, 3 P1</td><td class="no">Missing</td><td class="yes">2H + 2M</td></tr>
-    </table>
-  </div>
+<nav class="card">
+<a href="#verdict">Verdict</a>
+<a href="#how">How they work</a>
+<a href="#changes">Code changes</a>
+<a href="#findings">Findings</a>
+<a href="#graph">Graph necessity</a>
+<a href="#tools">Tool use</a>
+<a href="#buy">Buy?</a>
+</nav>
 
-  <div class="card">
-    <h2>Overlap highlights</h2>
-    <ul>
-      <li><strong>Both:</strong> BLE <code>record</code>/donor unwired; schedule payload key collisions; <code>s_prime</code> telemetry hole; <code>bug_id</code> drop</li>
-      <li><strong>Greptile only:</strong> minimizer <code>lambda: True</code>; mermaid diagrams; merge confidence</li>
-      <li><strong>Cursor only:</strong> corpus never selected; rarity-as-gain favoritism; missing <code>coverage_gain</code> arg; dict parser edge cases</li>
-    </ul>
-  </div>
+<div class="card" id="verdict">
+<h2>Verdict</h2>
+<p>Greptile <span class="yes">understood the crux</span> of small/medium/large AFL-fuzzer PRs and posted high-signal integration P1s with confidence scores (5/5 → 2/5) and Mermaid missing-edge diagrams. Copilot <span class="yes">matched most critical defects</span> and found extras Greptile missed (corpus unused, coverage_gain omission, rarity-as-gain). Greptile uniquely caught minimizer <code>lambda: True</code>. <span class="warn">TREX not observed</span>. Paying for Greptile is best for always-on GitHub UX; vs Cursor already reviewing every PR, value is <span class="warn">incremental</span>.</p>
+</div>
 
-  <div class="card">
-    <h2>Pay-for-Greptile?</h2>
-    <p><strong>vs no review:</strong> <span class="yes">Yes</span>.</p>
-    <p><strong>vs Cursor Bugbot:</strong> <span class="warn">Marginal</span> — buy Greptile for PR-bot packaging and the unique policy catches; skip if every PR already gets a thorough Cursor/agent review.</p>
-    <p><strong>vs Copilot:</strong> <span class="warn">Inconclusive</span> until credits/access return.</p>
-  </div>
+<div class="card" id="how">
+<h2>How they work</h2>
+<p><strong>Greptile:</strong> indexes repo into a function/class/import <em>graph</em> (AST-level entities + relationships); v3 agentic loop uses codebase search / learned rules for multi-hop reasoning; posts summary, P0–P2 inline, confidence 0–5, diagrams; optional TREX sandbox execution.</p>
+<p><strong>GitHub Copilot (product):</strong> PR/IDE reviewer; Lite vs Balanced effort; agentic “full project context” via Actions; MCP/skills optional; Comment-only (no approve); AI credits.</p>
+<p><strong>Copilot here (Cursor):</strong> Bugbot on <code>main...develop-N</code> diffs; severity findings; no GitHub bot packaging.</p>
+</div>
 
-  <p style="color:var(--muted)">Full write-up: <code>GREPTILE_DIFFERENTIAL_CODE_REPORT.md</code>. Per-PR: each branch’s <code>REPORT.md</code>. Updated 2026-08-26 after Cursor Bugbot stand-in pass.</p>
+<div class="card" id="changes">
+<h2>Code change ladder</h2>
+<table>
+<tr><th>Tier</th><th>PR</th><th>ΔLOC</th><th>Crux</th></tr>
+<tr><td>Small</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1">#1</a></td><td>+93/−8</td><td>Dict/splice mutations; BLE CLI/resume; crash-hot havoc bias</td></tr>
+<tr><td>Medium</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2">#2</a></td><td>+618/−21</td><td><code>power_schedule</code> + <code>ble_energy</code> + HTTP dict (partially wired)</td></tr>
+<tr><td>Large</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3">#3</a></td><td>+2432/−23</td><td>Corpus/coverage/triage/stats/havoc/minimize/report pipeline (plumbing bugs)</td></tr>
+</table>
+</div>
+
+<div class="card" id="findings">
+<h2>Finding overlap (abbreviated)</h2>
+<table>
+<tr><th>Finding</th><th>Greptile</th><th>Copilot</th><th>Graph-ish?</th></tr>
+<tr><td>BLE <code>record</code> never called</td><td class="yes">P1</td><td class="yes">high</td><td class="yes">call graph</td></tr>
+<tr><td>BLE donor splice dead</td><td class="yes">outside</td><td class="yes">med</td><td class="yes">call graph</td></tr>
+<tr><td>Schedule payload-only key</td><td class="yes">P1</td><td class="yes">med</td><td class="warn">partial</td></tr>
+<tr><td><code>coverage_gain</code> always 0</td><td class="no">—</td><td class="yes">med</td><td class="yes">call graph</td></tr>
+<tr><td><code>s_prime</code> telemetry hole</td><td class="yes">P1</td><td class="yes">high</td><td class="yes">dataflow</td></tr>
+<tr><td><code>bug_id</code> dropped</td><td class="yes">P1</td><td class="yes">high</td><td class="yes">API contract</td></tr>
+<tr><td>Minimizer <code>lambda: True</code></td><td class="yes">P1</td><td class="no">—</td><td class="warn">policy</td></tr>
+<tr><td>Corpus never selected</td><td class="no">—</td><td class="yes">med</td><td class="yes">architecture</td></tr>
+<tr><td>Diagrams + confidence</td><td class="yes">yes</td><td class="no">—</td><td>product</td></tr>
+</table>
+</div>
+
+<div class="card" id="graph">
+<h2>Did graph/AST matter?</h2>
+<p><span class="yes">Yes for the defect class</span> (missing write edges, cross-module contracts, architectural orphans). <span class="warn">No monopoly:</span> Copilot found most of the same without Greptile’s hosted index. Greptile’s unique value in-run = packaging + minimizer catch + outside-diff storytelling.</p>
+</div>
+
+<div class="card" id="tools">
+<h2>Did Greptile use its tools?</h2>
+<ul>
+<li><strong>Graph / search / multi-hop:</strong> <span class="yes">strongly indicated</span> (outside-diff, cross-file API reads, missing-edge Mermaid).</li>
+<li><strong>Learned rules / custom greptile.json:</strong> <span class="no">not configured / not evidenced</span>.</li>
+<li><strong>TREX sandbox:</strong> <span class="no">not observed</span> (no runtime artifacts).</li>
+</ul>
+</div>
+
+<div class="card" id="buy">
+<h2>Pay for Greptile?</h2>
+<p><strong>vs no automation:</strong> <span class="yes">Yes</span> for medium/large multi-file work.</p>
+<p><strong>vs Copilot/Cursor already mandatory:</strong> <span class="warn">Situational</span> — buy for unattended GitHub UX; enable TREX if you want a clearer wedge.</p>
+<p><strong>vs GitHub Copilot product:</strong> <span class="warn">Still incomplete</span> until credits return for a Balanced head-to-head on the same PRs.</p>
+</div>
+
+<p class="note">PRs: <a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1">#1</a> · <a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2">#2</a> · <a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3">#3</a>. Updated 2026-08-26.</p>
 </body>
 </html>
