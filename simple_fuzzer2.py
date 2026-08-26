@@ -633,13 +633,25 @@ class FuzzerClient:
             current_path = path.replace("{id}", id_value)
 
         # Determine mutation intensity based on path/method performance, mutation intensity is for the number of individual mutations done by the MutationEngine
-        if random.random() < 0.7:  # 70% small mutations
+        # Bias toward havoc-style larger stacks when the endpoint has prior crashes (AFL-like)
+        path_method_key = f"{method}:{path}"
+        crash_hot = (
+            hasattr(self, "crash_correlation")
+            and path in self.crash_correlation
+            and method in self.crash_correlation.get(path, {})
+        )
+        havoc_bias = 0.45 if crash_hot else 0.30
+        if random.random() < (1.0 - havoc_bias):
             mutation_count = random.randint(1, 3)
-        else:  # 30% larger mutations
-            mutation_count = random.randint(4, 10)
+        else:
+            mutation_count = random.randint(4, 12)
         
         # Use the MutationEngine defined in mutations.py instead of custom mutation functions to produce a mutated seed (test case)
         mutated_seed = self.mutation_engine.mutate_payload(seed, num_mutations=mutation_count)
+        # Occasional cross-seed splice against another corpus entry for the same path
+        if random.random() < 0.15 and path in self.SeedQ and self.SeedQ[path].get("seeds"):
+            donor = random.choice(self.SeedQ[path]["seeds"])
+            mutated_seed = self.mutation_engine.splice(mutated_seed, donor)
         
         # Generate a unique hash for this mutation to track it
         mutation_id = hashlib.md5(
