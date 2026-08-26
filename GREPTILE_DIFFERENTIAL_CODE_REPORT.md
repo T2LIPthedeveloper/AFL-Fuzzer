@@ -1,408 +1,727 @@
 # GREPTILE_DIFFERENTIAL_CODE_REPORT.md
 
-## Executive summary
-
-This document is an end-to-end comparison of **Greptile** (graph-/agentic AI PR review) versus **Copilot** (in this experiment: **Cursor Bugbot / Cursor agent code review**, used as the stand-in because GitHub Copilot code review could not run—credits exhausted / collaborator API 422). Throughout this report, **“Copilot” means that Cursor-based review**, unless a sentence explicitly says “GitHub Copilot product.”
-
-Three additive PRs were opened against `main`:
-
-| Tier | Branch | PR | Code Δ vs `main` | Greptile | Copilot (Cursor) |
-|------|--------|----|------------------|----------|------------------|
-| Small | `develop-1` | [#1](https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1) | +93 / −8 | Confidence **5/5**, 0 inline | **0 bugs** |
-| Medium | `develop-2` | [#2](https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2) | +618 / −21 | Confidence **2/5**, 2×P1 + 1 outside-diff | 1 high, 4 medium, 1 low |
-| Large | `develop-3` | [#3](https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3) | +2432 / −23 | Confidence **2/5**, 3×P1 | 2 high, 2 medium (+ inherits medium issues) |
-
-**Headline conclusion:** Greptile **understood the crux** of each PR (AFL-style mutation → scheduling → full greybox pipeline) and produced **integration / missing-edge** findings that align with what its marketing claims graph + agentic search are for. Copilot (Cursor) **matched Greptile on most critical defects** and found additional wiring/semantic issues Greptile missed. Greptile uniquely caught the minimizer `lambda: True` policy bug and packaged reviews with confidence scores + Mermaid flowcharts. **TREX (sandbox execution) does not appear to have run** on these PRs—findings are static reasoning, not runtime evidence. Paying for Greptile is **justified for always-on GitHub review UX and diagram/confidence packaging**; vs Cursor alone it is **incremental, not magical**—many “graph-looking” bugs were also found by Copilot without Greptile’s hosted index.
-
-Per-PR companion writeups: `REPORT.md` on each `develop-*` branch.
+**Document type:** End-to-end differential study of automated and human code review on AFL-Fuzzer  
+**Repository:** [T2LIPthedeveloper/AFL-Fuzzer](https://github.com/T2LIPthedeveloper/AFL-Fuzzer)  
+**Date:** 2026-08-26 (four-way comprehensive expansion)  
+**Companion HTML:** `GREPTILE_DIFFERENTIAL_CODE_REPORT.html` (**full twin** of this document—not a summary)  
+**Per-PR notes:** `REPORT.md` on `develop-1`, `develop-2`, `develop-3`
 
 ---
 
-## 1. Experiment methodology
+## Table of contents
 
-### 1.1 Goals
-1. Create three **additive** difficulty tiers of real fuzzer changes.
+1. [Executive summary](#1-executive-summary)
+2. [Four reviewers defined](#2-four-reviewers-defined)
+3. [Experiment methodology](#3-experiment-methodology)
+4. [Baseline codebase that already existed](#4-baseline-codebase-that-already-existed)
+5. [Code changes by tier (exhaustive inventory)](#5-code-changes-by-tier-exhaustive-inventory)
+6. [How Greptile works](#6-how-greptile-works)
+7. [How Copilot works](#7-how-copilot-works)
+8. [How human-in-the-loop review works](#8-how-human-in-the-loop-review-works)
+9. [What “no reviewer” implies](#9-what-no-reviewer-implies)
+10. [Greptile tool use on these PRs](#10-greptile-tool-use-on-these-prs)
+11. [Tier results — Small (PR #1)](#11-tier-results--small-pr-1)
+12. [Tier results — Medium (PR #2)](#12-tier-results--medium-pr-2)
+13. [Tier results — Large (PR #3)](#13-tier-results--large-pr-3)
+14. [Master finding matrix (four-way)](#14-master-finding-matrix-four-way)
+15. [Graph / AST necessity analysis](#15-graph--ast-necessity-analysis)
+16. [Did Greptile understand the crux?](#16-did-greptile-understand-the-crux)
+17. [Volume vs normal review](#17-volume-vs-normal-review)
+18. [Pros and cons (four-way)](#18-pros-and-cons-four-way)
+19. [Cost, latency, and process friction](#19-cost-latency-and-process-friction)
+20. [Failure modes and pitfalls](#20-failure-modes-and-pitfalls)
+21. [Scenario playbooks](#21-scenario-playbooks)
+22. [Recommendation and buy decision](#22-recommendation-and-buy-decision)
+23. [Appendices](#23-appendices)
+
+---
+
+## 1. Executive summary
+
+This study compares **four review regimes** on the same three pull requests to `main`:
+
+| Regime | Meaning in this document |
+|--------|--------------------------|
+| **No reviewer** | Merge/ship with zero code review—human or automated |
+| **Copilot** | Automated “standard” AI review. **In this experiment:** Cursor Bugbot / Cursor agent review, because **GitHub Copilot code review could not run** (credits exhausted / collaborator API HTTP 422). Unless a sentence explicitly says “GitHub Copilot product,” **Copilot = Cursor Bugbot**. |
+| **Greptile** | Greptile GitHub App (`greptile-apps[bot]`) with repository graph index + agentic PR review |
+| **Human-in-the-loop alone** | A competent engineer reviewing without Greptile/Copilot bots—GitHub diff UI, local checkout, search (“find references”), judgment. Modeled from (a) what a careful senior would catch on these defects and (b) known human failure modes on integration bugs under time pressure |
+
+### 1.1 PR ladder results at a glance
+
+| Tier | Branch | PR | Code Δ vs `main` | No reviewer | Copilot | Greptile | Human alone (modeled) |
+|------|--------|----|------------------|-------------|---------|----------|------------------------|
+| Small | `develop-1` | [#1](https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1) | +93 / −8 | Ships OK | 0 defects | 5/5, 0 defects | Would approve; maybe note unused `strategy_hits` |
+| Medium | `develop-2` | [#2](https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2) | +618 / −21 | **Ships broken schedulers** | 1H+4M+1L | 2/5, 2×P1 + outside-diff | Likely BLE unwired + donor; may miss keying/dict |
+| Large | `develop-3` | [#3](https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3) | +2432 / −23 | **Ships lying telemetry/corpus** | 2H+2M (+ medium) | 2/5, 3×P1 | Likely telemetry/`bug_id`; variable on minimizer/corpus |
+
+### 1.2 Headline conclusions
+
+1. **No reviewer is unacceptable** for medium/large tiers: new modules look complete in the diff but are **partially unwired**. BLE energy never learns; HTTP schedule state conflates endpoints; coverage collapses; crash reports can show **zero** crashes; corpus artifacts diverge from live selection.
+2. **Greptile understood the crux** at every tier and produced **integration / missing-edge** findings aligned with its graph + agentic-search marketing (confidence 5→2, Mermaid flowcharts of absent edges).
+3. **Copilot matched Greptile on most critical defects** and found additional issues Greptile missed (`coverage_gain` omission, corpus unused, rarity-as-gain, dict parse).
+4. **Human-in-the-loop alone** can catch the worst integration bugs *with time and diligence*, but is **inconsistent**, slower, and historically weak on call-graph orphans under diff fatigue. Humans uniquely add product/intent/ethics critique bots skip.
+5. **TREX** (Greptile sandbox execution) **did not appear to run**—Greptile findings here are static reasoning, not runtime evidence.
+6. **Best risk posture:** human-in-the-loop **plus** one automated reviewer (Greptile *or* Copilot)—not automation replacing humans, and not humans without automation on 2k+ LOC integration PRs.
+7. **Pay for Greptile** when you need always-on GitHub packaging (confidence, diagrams, unattended P1s). **Do not expect a monopoly** on graph-class bugs versus Copilot/Cursor already reviewing thoroughly.
+
+---
+
+## 2. Four reviewers defined
+
+### 2.1 No reviewer
+
+- **Process:** Author merges after CI green (or without CI); no second read of the diff.
+- **Information diet:** Author’s mental model only.
+- **Strengths:** Zero latency, zero review cost, maximum velocity.
+- **Weaknesses:** Integration bugs in *this* experiment are exactly what authors miss—they wrote the new module and assumed wiring. No adversarial “API exists but never called” pass.
+- **Fit:** Trivial typos with tests. **Not** multi-file fuzzer pipeline grafts.
+
+### 2.2 Copilot (Cursor Bugbot here; GitHub Copilot product documented)
+
+**As used (Cursor Bugbot):**
+- Invoked per branch with `Diff: branch changes` vs `main`.
+- Emits severity-tagged findings with file/line.
+- Does not auto-post to GitHub unless transcribed.
+- On this repo: strong cross-file integration reasoning on medium/large.
+
+**GitHub Copilot product (not run):**
+- Assign as PR reviewer or enable auto-review; **Lite** vs **Balanced** effort.
+- Agentic “full project context” via GitHub Actions; optional MCP/skills; cloud-agent fix PRs.
+- Always leaves a **Comment** review (never Approve / Request changes)—does not satisfy required approvals.
+- Consumes AI credits; some file types excluded (lockfiles, logs, SVG, …).
+
+### 2.3 Greptile
+
+- Builds a **repository graph** (files, functions, classes, imports, calls).
+- v3 **agentic loop**: codebase search, learned rules, multi-hop exploration, optional git history.
+- Posts PR summary, **confidence 0–5**, **P0/P1/P2** inline comments, optional Mermaid diagrams.
+- Optional **TREX** runtime validation (not observed here).
+- Learning via 👍/👎; custom `greptile.json` / `.greptile/` (not configured here).
+
+### 2.4 Human-in-the-loop alone
+
+- Reads GitHub “Files changed” and/or local `git diff main...HEAD`.
+- Uses IDE “find references,” mentally simulates fuzz loops, maybe runs a smoke test.
+- Asks: “Is this feature actually called?” and “What would the campaign report show after 100 iterations?”
+- **Not modeled as perfect:** time pressure, fatigue on +2400 LOC, author bias, trust in modules that “look AFL-complete.”
+- **Unique strengths:** threat modeling, product intent, whether AFL semantics are *correct* (not merely wired), BLE operational cost, dictionary ethics, merge strategy across stacked PRs.
+
+### 2.5 Scoring axes used throughout
+
+Detection likelihood · explanation quality · false-positive risk · latency · cost · consistency · merge-gate packaging · accountability.
+
+---
+
+## 3. Experiment methodology
+
+### 3.1 Goals
+
+1. Build three **additive** difficulty tiers of real AFL-fuzzer changes.
 2. Open PRs to `main` so Greptile’s GitHub App reviews them.
-3. Compare against a **standard** automated reviewer (intended: GitHub Copilot; actual: Cursor Bugbot labeled “Copilot” here).
-4. Judge whether Greptile’s **graph / AST / agentic search** story yields defects that are hard without structural codebase context.
-5. Produce this collated analysis for a buy/no-buy decision.
+3. Run Copilot-equivalent (Cursor) reviews on the same diffs.
+4. Model **no reviewer** and **human-alone** outcomes against the same defect set.
+5. Judge whether Greptile’s graph/AST/agentic story yields defects hard without structural context.
+6. Produce buy/no-buy guidance with four-way nuance.
 
-### 1.2 Branch ladder
+### 3.2 Branch ladder
+
 ```
 main
   └── develop-1   (small)     ── PR #1 → main
         └── develop-2 (medium) ── PR #2 → main
               └── develop-3 (large) ── PR #3 → main
 ```
-Each higher PR’s diff to `main` **includes** lower tiers.
 
-### 1.3 What existed before (baseline on `main`)
-The repository already contained a working multi-target fuzzer stack, including approximately:
-- `simple_fuzzer2.py` — Django/OpenAPI greybox HTTP fuzzer (`FuzzerClient`, `SeedQ`, energy heuristics, coverage probes, bug classification, session folders).
-- `mutations.py` — `MutationEngine` (bitflip, arithmetic, special chars, payload walkers).
-- `main.py` — interactive project launcher (Django / BLE / …).
-- `BLE/Smartlock.py` + `BLEClient` — BLE smart-lock AFL-style loop (queue, mutate, interestingness, energy).
-- Supporting pieces: dictionaries folder patterns, sessions, bug classifiers, etc.
+Higher PRs’ diffs to `main` **include** lower tiers.
 
-**Important:** Medium/large tiers deliberately added **new modules** and **partially wired** them into existing loops—the classic “looks complete in the diff hunk, broken in the call graph” failure mode that graph reviewers advertise.
+### 3.3 SHAs under review (code, pre-report commits)
 
-### 1.4 Reviewers actually used
+| Tier | Code SHA |
+|------|----------|
+| Small | `c82a6cf196bb3d1bfe4434088ce1092784db85d8` |
+| Medium | `ce356ed1471c78092f0c05769c7c780d064b0163` |
+| Large | `6a2233a35474118cac65ec89940e45996e2c93ec` |
 
-| Name in this report | Actual system | How it was invoked |
-|---------------------|---------------|--------------------|
-| **Greptile** | Greptile GitHub App (`greptile-apps[bot]`) | Automatic on PR open; summaries + inline P1s captured from PR comments |
-| **Copilot** | **Cursor Bugbot** (Cursor review subagent) on each branch vs `main` | Manual: checkout branch → Bugbot `Diff: branch changes` / `Base Branch: main` |
-| GitHub Copilot (product) | Not available | Credits / `requested_reviewers` 422; `@copilot` produced no reviews |
+### 3.4 Evidence sources
 
-### 1.5 Evidence sources
-- Greptile PR summary comments and inline review comments on PRs #1–#3 (captured 2026-08-26).
-- Cursor Bugbot finding objects for develop-1/2/3.
-- Greptile public docs: [Introduction](https://www.greptile.com/docs/introduction), [Graph-based codebase context](https://www.greptile.com/docs/how-greptile-works/graph-based-codebase-context), [Anatomy of a review](https://www.greptile.com/docs/code-review/first-pr-review), [Key features / TREX](https://www.greptile.com/docs/code-review/key-features), [Greptile v3 agentic review](https://www.greptile.com/blog/greptile-v3-agentic-code-review), [TREX blog](https://www.greptile.com/blog/trex-code-execution).
-- GitHub docs: [About Copilot code review](https://docs.github.com/en/copilot/concepts/agents/code-review), [Using Copilot code review](https://docs.github.com/copilot/using-github-copilot/code-review/using-copilot-code-review).
+- Greptile issue + inline comments on PRs #1–#3 (captured 2026-08-26).
+- Cursor Bugbot findings for each `develop-*` vs `main`.
+- Greptile docs/blog: introduction, graph-based codebase context, anatomy of a review, key features / TREX, v3 agentic rewrite, TREX execution blog.
+- GitHub Copilot code review documentation (concepts + how-to).
+- Local inspection of `fuzz_stats.note_iteration`, `choose_next_seed`, BLE `afl_fuzz` loop, etc.
+
+### 3.5 What this study is not
+
+- Not a statistically powered A/B across hundreds of PRs.
+- Not a TREX evaluation.
+- Not a live GitHub Copilot Balanced head-to-head (blocked).
+- Not a claim that Cursor ≡ GitHub Copilot product quality.
+- Human column is **modeled**, not a separate double-blind hired review.
 
 ---
 
-## 2. How Greptile works (product model)
+## 4. Baseline codebase that already existed
 
-### 2.1 Indexing / graph construction
-Per Greptile’s documentation, when a repo is connected Greptile builds a **repository graph**:
+On `main` before the experiment, AFL-Fuzzer already contained a multi-target fuzzing workspace.
 
-1. **Parse** files (effectively AST-level extraction of directories, files, functions, classes, variables).
-2. **Map relationships** — function calls, imports, dependencies, variable usage.
+### 4.1 HTTP / Django greybox path
+
+- **`simple_fuzzer2.py` (`FuzzerClient`):** OpenAPI-driven seed queue (`SeedQ`), mutation intensity, energy heuristics, coverage probes, crash correlation, bug classification, session folders, `choose_next_seed` cycling path/method pairs.
+- **`mutations.py` (`MutationEngine`):** bitflip, interesting integers, special chars, structured payload walking, `random_mutation`, `mutate_payload`.
+- Supporting classifiers, session persistence, coverage helpers as previously merged.
+
+### 4.2 BLE path
+
+- **`BLE/Smartlock.py`:** async AFL-like loop—queue, `mutate_input`, `assign_energy`, `choose_next`, interestingness, reconnect cadence, resume JSON.
+- **`BLEClient`:** connect / write / log helpers.
+- Launcher wiring through **`main.py`** interactive commands.
+
+### 4.3 Why the baseline matters
+
+Medium/large changes **deliberately grafted** new schedulers / corpus / telemetry onto these loops. Review value is almost entirely about whether reviewers notice **incomplete grafts**—not whether new files parse as Python.
+
+---
+
+## 5. Code changes by tier (exhaustive inventory)
+
+### 5.1 Small — `develop-1` — +93 / −8 across 3 files
+
+| File | Approx Δ | What changed | Intent |
+|------|----------|--------------|--------|
+| `main.py` | +11 / −5 | Bare `BLE` early-return; resume path resolved to absolute | CLI matches README / `run.sh`; resume loads reliably |
+| `mutations.py` | +70 / −2 | `dictionary_tokens`, `dictionary_insert`, `splice`, `_record_strategy`; strategies extended | AFL-like dictionary + splice diversity |
+| `simple_fuzzer2.py` | +15 / −3 | Crash-hot havoc bias; ~15% same-path splice | More mutation stack near crashy endpoints |
+
+**Crux:** Refine mutations + BLE ergonomics; no architecture rewrite.  
+**Risk if unreviewed:** Low. Worst case: mutation mix shifts; resume mismatch is *fixed* by the PR.
+
+### 5.2 Medium — unique `develop-1`→`develop-2` — +525 / −13 across 6 files
+
+| File | Δ | What changed | Intent |
+|------|---|--------------|--------|
+| `power_schedule.py` | +249 (new) | Modes explore/exploit/COE/fast/linear/quad; `SeedStats`; `calculate_energy`; summary | AFL-like HTTP energy |
+| `ble_energy.py` | +144 (new) | `BLEEnergyScheduler`, transitions, `record`, `energy_for`, `rank_queue`, `splice_sequences` | BLE novelty/crash-aware energy |
+| `dictionaries/http_api.dict` | +42 (new) | HTTP/API tokens | Richer dictionary mutations |
+| `mutations.py` | +22 | `from_dictionary_file` AFL dict parser | Load tokens from file |
+| `simple_fuzzer2.py` | +43 / −~8 | Dict engine; `PowerSchedule`; energy blend; persist snapshot; `record_execution` | Connect schedule to HTTP fuzzer |
+| `BLE/Smartlock.py` | +38 / −~7 | Scheduler import; interesting-byte; donor-capable mutate; energy/choose via scheduler | Connect schedule to BLE fuzzer |
+
+**Crux:** Add scheduling subsystems. **Latent bug class:** read paths wired; write/donor paths not.  
+**Risk if unreviewed:** High—feature appears shipped; BLE energy never learns; identical HTTP bodies share energy across endpoints.
+
+### 5.3 Large — unique `develop-2`→`develop-3` — +1821 / −9 across 8 files
+
+| File | Δ | What changed | Intent |
+|------|---|--------------|--------|
+| `corpus_manager.py` | +316 (new) | Weighted corpus, favoritism, persistence, selection APIs | AFL-like queue |
+| `coverage_bitmap.py` | +252 (new) | Outcome edges, interesting scores | Lightweight coverage |
+| `crash_triage.py` | +292 (new) | Signatures, dedup, optional minimize | Crash hygiene |
+| `fuzz_stats.py` | +208 (new) | Counters; crashes counted iff `reveals_bug and bug_id` | Campaign metrics |
+| `havoc_stage.py` | +202 (new) | Stacked havoc | Mutation depth |
+| `seed_minimizer.py` | +198 (new) | Structural trim with interestingness predicate | Seed minimization |
+| `session_replay.py` | +217 (new) | Replay helpers + HTML report | Artifacts |
+| `simple_fuzzer2.py` | +145 / −~9 | Wire all of the above into metrics / sessions / mutations | Integration |
+
+**Crux:** Full greybox pipeline. **Latent bug class:** telemetry plumbing, API contracts, corpus not selected, dishonest minimizer predicate.  
+**Risk if unreviewed:** Very high—dashboards lie; favored corpus polluted; new corpus unused for live selection.
+
+### 5.4 Cumulative LOC vs `main`
+
+| Branch tip (code) | Insertions | Deletions |
+|-------------------|------------|-----------|
+| `develop-1` | 93 | 8 |
+| `develop-2` | 618 | 21 |
+| `develop-3` | 2432 | 23 |
+
+---
+
+## 6. How Greptile works
+
+### 6.1 Indexing / graph construction
+
+When a repository is connected, Greptile builds a **complete graph** of code elements:
+
+1. **Parse** files → extract directories, files, functions, classes, variables (AST-level structure).
+2. **Map relationships** → function calls, imports, dependencies, variable usage.
 3. **Store** the graph for query during reviews.
 
-Third-party technical writeups describing Greptile’s semantic graph additionally mention stages such as natural-language summaries of units, **embeddings** into a vector store, and edges for call/import **and** embedding similarity. Treat those as secondary descriptions of the same idea: **code is structure + retrieval, not only a text diff**.
+Secondary writeups of Greptile-style semantic graphs also mention natural-language summaries per unit, **embeddings** in a vector store, and edges for call/import **and** embedding similarity. Core product claim: reviews reason about **ripple effects beyond the diff**.
 
-### 2.2 Review-time behavior (v3 agentic loop)
-Greptile v3 (blog, 2025-11) moved from a rigid “diff → context → comments” flowchart to an **agentic detective loop**:
-- Tools such as **codebase search** and **learned rules**.
-- High limits on tool use / inference so the agent can **multi-hop** (follow nested callers/callees, compare similar implementations, optionally consult git history).
-- Claimed outcomes: higher upvote ratio (+256% vs v2), higher action rate, better precision via a higher “sureness” threshold.
+### 6.2 v3 agentic detective loop
 
-At PR time Greptile posts (see *Anatomy of a Review*):
-- **PR summary** (what changed + issues).
-- **Confidence score** 0–5 (merge readiness heuristic).
-- **Inline comments** with **P0/P1/P2** severity.
-- Optional **diagrams** (sequence / ER / class / **flow**)—selected by change type.
-- Suggested fixes, “Fix with your Agent,” learning via 👍/👎.
+Greptile v3 replaced a rigid flowchart (diff → fixed context → comments) with a loop that can repeatedly:
 
-### 2.3 Optional tools Greptile can use (and whether we saw them)
+- search the codebase,
+- follow nested calls,
+- compare similar implementations,
+- optionally consult git history,
+- apply learned rules,
 
-| Capability | What it is | Observed on PRs #1–#3? |
-|------------|------------|-------------------------|
-| Graph / codebase index queries | Cross-file callers, imports, patterns | **Strongly indicated** (see §7) |
-| Codebase search (agentic v3) | Multi-hop file reads beyond the diff | **Strongly indicated** (outside-diff comment; cross-module API contracts) |
-| Learned team rules / memory | Adapt from reactions & PR discussion | **Not evidenced** (fresh experiment; no training loop) |
-| Custom `greptile.json` / `.greptile/` rules | Org standards | **Not configured** in this repo |
-| Cross-repo clusters | Multi-repo context | **N/A** |
-| **TREX** (Test, Run, EXecute) | Sandbox: write/run tests, attach logs/screenshots | **Not observed** — no sandbox artifacts, no runtime proof comments |
-| MCP / Fix-with-Agent buttons | IDE remediation path | Present as product UX; not part of our analysis |
+with high tool/inference budgets. Vendor-published v3 metrics include large gains in upvote ratio and action rate versus v2, attributed partly to a higher “sureness” threshold (fewer low-confidence nits).
 
-**Conclusion on tool use in this experiment:** Greptile behaved like **static agentic + graph/search review**. It did **not** appear to exercise TREX. The most “tool-like” artifacts we *did* see are **Mermaid flowcharts of missing edges** and an **outside-diff** comment—both consistent with call-graph traversal rather than hunk-only linting.
+### 6.3 Anatomy of a Greptile PR review
 
-### 2.4 Pricing context (for buy decision)
-Public Greptile site (as of research): Starter free (limits), Pro ~$30/seat/month with credit model; TREX reviews cost more credits than standard reviews. Exact billing should be confirmed in-app.
+- Analyzing (👀, often ~3 minutes) → Complete (👍)
+- **Summary:** what the PR does + issues found
+- **Confidence 0–5:** merge readiness (5 = production ready; 2 = significant bugs / needs rework)
+- **Inline comments** with **P0 / P1 / P2** severity badges
+- **Diagrams:** sequence / ER / class / **flow** (flow diagrams appeared on our medium and large PRs)
+- Suggested fixes; “Fix with your Agent”; learning via reactions
+
+### 6.4 Optional capabilities
+
+Custom rules, cross-repo clusters, MCP IDE tools, analytics, **TREX** (write/run tests in an isolated sandbox; attach logs/screenshots/traces). Public billing messaging centers on seats + credits (TREX reviews consume more credits than standard reviews)—confirm current pricing in-product.
 
 ---
 
-## 3. How Copilot review works (product model vs this experiment)
+## 7. How Copilot works
 
-### 3.1 GitHub Copilot code review (the intended baseline)
-From GitHub docs:
-- Reviews PRs (and IDE selections) for bugs, security, style; posts **Comment** reviews (never Approve / Request changes—**does not satisfy** required approvals).
-- Trigger: assign Copilot as reviewer, or auto-review policies; CLI `gh pr edit --add-reviewer`.
-- Typical latency claimed ~tens of seconds for a pass.
-- **Effort levels:** Lite (fast/common issues) vs Balanced (higher-reasoning, more AI credits, better for complex/cross-service).
-- **Agentic capabilities:** “full project context gathering” via GitHub Actions runners; can pass suggestions to Copilot cloud agent; can use **agent skills** and **MCP servers** when configured.
-- Consumes **AI credits**; Actions minutes for agentic context.
-- Excludes some file types (lockfiles, logs, SVG, …).
+### 7.1 GitHub Copilot code review (product)
 
-GitHub Copilot **did not run** here (credits / access). Its documented “full project context” is conceptually closer to Greptile than people assume for older Copilot, but Greptile’s differentiator remains the **persistent repo graph + always-on bot + diagrams/confidence + optional TREX**.
+- Reviews any language; often suggests one-click fixes.
+- Trigger: reviewers sidebar, auto-review policies, or CLI.
+- **Lite** vs **Balanced** effort (Balanced routes to higher-reasoning analysis; more AI credits).
+- Agentic capabilities: full project context gathering (Actions runners); pass suggestions to Copilot cloud agent; MCP servers / agent skills when configured.
+- Always a **Comment** review—does not block merges via required approvals.
+- Cost: AI credits + Actions minutes for agentic features; some files excluded.
 
-### 3.2 Copilot in *this* report = Cursor Bugbot
-Cursor’s Bugbot review subagent:
-- Computes a local git diff (`branch changes` vs base `main`).
-- Reasons over that diff (and can read files) to emit severity-tagged findings with file:line locations.
-- Does **not** post to GitHub automatically in our workflow.
-- Does **not** expose Greptile-style confidence scores or Mermaid diagrams.
-- In practice for this repo, it performed **cross-file integration reasoning** similar in spirit to Greptile’s missing-edge findings—i.e., it was **not** limited to pure style nits.
+### 7.2 Copilot in this experiment (Cursor Bugbot)
 
-When this report says Copilot “reviewed X,” it means Bugbot analyzed the `main...develop-N` diff and produced the finding tables in §6.
+- Local/branch diff review with severity findings.
+- No confidence score, no Mermaid, no automatic GitHub inline threads unless pasted.
+- Here: behaved as a **strong static integration reviewer**, not a style-nit bot.
+
+### 7.3 Implications for the four-way comparison
+
+The Copilot column is the **best available automated “standard” reviewer we could actually run**. External validity to GitHub Copilot Balanced should be re-checked when credits return.
 
 ---
 
-## 4. Code changes that were made (inventory)
+## 8. How human-in-the-loop review works
 
-### 4.1 Small tier — `develop-1` (`c82a6cf1`) — +93 / −8
+### 8.1 Ideal human process on these PRs
 
-| File | Role of change |
-|------|----------------|
-| `main.py` | Bare `BLE` returns fresh-run args; `--resume` now passes **resolved absolute** path |
-| `mutations.py` | Optional dictionary tokens; `dictionary_insert`; `splice`; strategy hit counters; wired into `random_mutation` |
-| `simple_fuzzer2.py` | Crash-hot havoc intensity bias; occasional same-path seed splice |
+1. Read PR description / commits for intent (scheduling, corpus, telemetry).
+2. Skim new modules for API surface (`record`, `note_iteration`, `trim`, choose/select).
+3. **Find references** from campaign loops to those APIs.
+4. Trace one HTTP iteration and one BLE iteration end-to-end on paper.
+5. Ask what `power_schedule.json` / HTML campaign report would show after 100 iterations.
+6. Optionally run a short fuzz smoke or unit-instantiate new classes.
+7. Leave blocking comments on unwired edges; approve only after fixes or explicit follow-ups.
 
-**Crux:** Improve mutation diversity + fix BLE CLI/resume ergonomics without redesigning the fuzzer architecture.
+### 8.2 Realistic human failure modes (applied here)
 
-**Pre-existing code touched:** Interactive CLI BLE branch; `MutationEngine` strategies; HTTP mutation intensity selection near `SeedQ` / `crash_correlation`.
+- **Diff fatigue** on +2400 LOC: deep-read new files; skim wiring in `simple_fuzzer2.py`.
+- **Completeness illusion:** `ble_energy.py` looks finished → skip call-site audit.
+- **Author bias** if the same person wrote and reviewed.
+- **Time boxing:** catch two of five issues; ship the rest.
+- **Under-weighting** “reports show zero crashes” without running a campaign.
 
-### 4.2 Medium tier — unique on `develop-2` (`ce356ed1`) — +525 / −13 on top of small
+### 8.3 What humans uniquely catch (bots weak)
 
-| File | Role of change |
-|------|----------------|
-| `power_schedule.py` (**new**, 249 LOC) | AFL-like modes (explore/exploit/COE/fast/…); `SeedStats`; `calculate_energy`; summaries |
-| `ble_energy.py` (**new**, 144 LOC) | `BLEEnergyScheduler`, transition helpers, `splice_sequences` |
-| `dictionaries/http_api.dict` (**new**) | HTTP/API tokens |
-| `mutations.py` | `from_dictionary_file` AFL dict loader |
-| `simple_fuzzer2.py` | Load dict file; construct `PowerSchedule`; blend schedule into energy; persist `power_schedule.json` |
-| `BLE/Smartlock.py` | Import scheduler; interesting-byte mut; donor-capable `mutate_input`; `assign_energy`/`choose_next` use scheduler |
-
-**Crux:** Add dedicated scheduling subsystems for HTTP + BLE and load richer dictionaries—**but** BLE feedback/`record` and donor splice must be connected for the feature to work.
-
-**Pre-existing code:** BLE campaign loop (`afl_fuzz`), HTTP `assign_energy` / `update_energy_metrics`, mutation engine.
-
-### 4.3 Large tier — unique on `develop-3` (`6a2233a3`) — +1821 / −9 on top of medium
-
-| File | Role of change |
-|------|----------------|
-| `corpus_manager.py` (**new**, 316) | Weighted corpus, favoritism, persistence, selection APIs |
-| `coverage_bitmap.py` (**new**, 252) | HTTP outcome “edges,” interestingness scores |
-| `crash_triage.py` (**new**, 292) | Crash signatures / dedup / optional minimize |
-| `fuzz_stats.py` (**new**, 208) | Campaign counters; **requires `reveals_bug and bug_id`** to count crashes |
-| `havoc_stage.py` (**new**, 202) | Stacked havoc mutations |
-| `seed_minimizer.py` (**new**, 198) | Structural trim with interestingness predicate |
-| `session_replay.py` (**new**, 217) | Replay helpers + HTML report |
-| `simple_fuzzer2.py` | Wire all of the above into metrics, sessions, mutation path |
-
-**Crux:** Stand up a full greybox pipeline (corpus, coverage, triage, stats, havoc, minimize, report). Success hinges on **plumbing** request results and bug IDs into telemetry and on **honest** minimizer predicates—plus actually **selecting** from the new corpus.
-
-**Pre-existing code:** Main HTTP fuzz loop, `SeedQ`-based `choose_next_seed`, `update_energy_metrics`, session save paths.
+- Whether dictionary tokens are appropriate for the target (ethics / scope).
+- Whether BLE reconnect/sleep constants remain sane under higher energy.
+- Whether three stacked PRs to `main` is the right merge strategy.
+- Whether HTTP status/body hashing is scientifically meaningful “coverage” versus marketing language.
 
 ---
 
-## 5. What Greptile reviewed and said (verbatim essence)
+## 9. What “no reviewer” implies
 
-### 5.1 PR #1 (small) — confidence 5/5
-**Summary understanding (accurate):** Expands AFL-style mutations; adjusts BLE command handling; bare `BLE`; resolved resume paths; dictionary insert; splice; strategy telemetry; crash-associated intensity; occasional same-path splice.
+Counterfactual: each PR merges as authored.
 
-**Inline defects:** none.
+| Tier | Likely production outcome without review |
+|------|------------------------------------------|
+| Small | Mostly fine; richer mutations; BLE resume fixed |
+| Medium | BLE scheduler never learns; splice dead; HTTP energy conflates identical bodies across endpoints; engineers may “tune” schedules that are not learning |
+| Large | Coverage buckets collapse; crash HTML/stats show **0**; minimized junk favored; on-disk corpus diverges from live `SeedQ` selection |
 
-**Did Greptile get the crux?** **Yes.** It recognized refinements, not a rewrite, and correctly treated the PR as merge-safe.
-
-**Compared to “normal” review volume:** Low comment count is **appropriate** (clean small PR)—not under-reviewing.
-
-### 5.2 PR #2 (medium) — confidence 2/5
-**Summary understanding (accurate):** AFL-inspired HTTP/BLE scheduling, dictionary mutations, splicing, BLE resume—and **explicitly** that BLE feedback scheduling + splicing are unreachable while HTTP scheduling conflates identical payloads across endpoints.
-
-**Inline P1s:**
-1. `BLE/Smartlock.py` — **Scheduler scores stay empty** (`record` never called).
-2. `power_schedule.py` — **Endpoint statistics conflated** (payload-only fingerprint).
-
-**Outside diff:**
-- `BLE/Smartlock.py:279` — **BLE splicing unreachable** (`mutate_input(seed)` omits donor).
-
-**Mermaid flowchart:** Seed queue → choose → energy → mutate → execute → observe, with **missing BLE record** edge back to scheduler and **donor not supplied** edge into mutate.
-
-**Did Greptile get the crux?** **Yes—better than a surface reading.** It treated “new scheduler module” as incomplete until write-path exists.
-
-**Volume vs normal:** For ~600 LOC with 2 real integration bugs, **2 P1s + 1 outside + low confidence** is **high signal, low noise**—stronger than a typical style-heavy bot pass.
-
-### 5.3 PR #3 (large) — confidence 2/5
-**Summary understanding (accurate):** Full AFL-style corpus/coverage/scheduling/crash-triage/havoc/minimize/replay/report pipeline; integration **loses** request-result data and bug IDs before telemetry; unverified minimized payloads favored.
-
-**Inline P1s:**
-1. `simple_fuzzer2.py` — **Response telemetry loses outcomes** (`s_prime` missing fields).
-2. `simple_fuzzer2.py` — **Crash identifiers dropped** (`bug_id` not passed; `FuzzStatsCollector` needs both flags).
-3. `simple_fuzzer2.py` — **Minimization discards coverage behavior** (`lambda candidate: True`).
-
-**Mermaid flowchart:** Execution → classification → `update_energy_metrics` with **result fields not copied** and **bug_id not forwarded**, then coverage/triage/stats/minimizer → favored corpus.
-
-**Files needing attention:** `simple_fuzzer2.py`, `fuzz_stats.py`, `coverage_bitmap.py`, `crash_triage.py`, `seed_minimizer.py`, `corpus_manager.py`.
-
-**Did Greptile get the crux?** **Yes.** It understood the pipeline *and* where integration fails.
-
-**Volume vs normal:** 3 P1s on a 2.4k LOC PR with many new files is **selective**—it did **not** nit every new module; it focused on **integration seams**. That is “more than a shallow skim” on severity, “less than a noisy linter” on comment count.
+**Additional risk:** dictionary tokens include XSS/SQLi-like strings—expected for a fuzzer, dangerous if aimed at production without isolation. No reviewer also means no confirmation of target-environment assumptions.
 
 ---
 
-## 6. What Copilot (Cursor) reviewed and said
+## 10. Greptile tool use on these PRs
 
-### 6.1 PR #1 / develop-1
-**Bugs:** none.  
-**Alignment:** Matches Greptile’s clean verdict.  
-**Minor human note:** `strategy_hits` collected but never exported (neither bot blocked on this).
+| Capability | Observed? | Evidence |
+|------------|-----------|----------|
+| Graph / index queries | **Strongly indicated** | Cross-file contracts; files-needing-attention lists; missing-edge diagrams |
+| Agentic codebase search | **Strongly indicated** | Outside-diff donor call; `FuzzStatsCollector` conjunction defined in another new file |
+| Learned rules / memory | Not evidenced | Fresh experiment; no training window |
+| Custom `greptile.json` | No | Not present in repo |
+| Cross-repo clusters | N/A | Single repository |
+| TREX sandbox | **No** | No logs, screenshots, or generated tests attached to comments |
+| Fix-with-Agent UX | Product feature | Not evaluated as a remediation workflow |
 
-### 6.2 PR #2 / develop-2
-
-| Sev | Location | Finding |
-|-----|----------|---------|
-| high | `BLE/Smartlock.py` | `ble_scheduler.record()` never called |
-| medium | `BLE/Smartlock.py` | donor splice never invoked |
-| medium | `power_schedule.py` | stats keyed by payload fingerprint only |
-| medium | call site in `simple_fuzzer2.py` | `update_energy_metrics(...)` omits `coverage_gain` → always 0 |
-| low | `mutations.py` dict loader | lines with `=` and `"` misparsed as AFL `name="value"` |
-
-Disputed/soft FP: claim that dictionary tokens never reach `mutate_payload`—actually `mutate_payload` → `random_mutation` can select `dictionary_insert`.
-
-### 6.3 PR #3 / develop-3
-
-| Sev | Location | Finding |
-|-----|----------|---------|
-| high | `simple_fuzzer2.py` | response metadata never attached to `s_prime` before coverage/triage/stats |
-| high | `simple_fuzzer2.py` | `note_iteration(reveals_bug=True)` without `bug_id` → crash stats stay 0 |
-| medium | `simple_fuzzer2.py` | `mark_result` treats rarity/`interesting_score` as coverage gain → favoritism doesn’t decay |
-| medium | `simple_fuzzer2.py` | `CorpusManager` filled/persisted but `choose_next_seed` still uses only `SeedQ` |
+**Conclusion:** Greptile used **static graph/search reasoning + diagram generation**. It did **not** demonstrate runtime proof via TREX on these PRs.
 
 ---
 
-## 7. Differential analysis: overlap, uniques, graph necessity
+## 11. Tier results — Small (PR #1)
 
-### 7.1 Master overlap matrix
+### 11.1 Greptile
 
-| Finding | Tier | Greptile | Copilot | Needs graph/AST-ish reasoning? | Notes |
-|---------|------|----------|---------|--------------------------------|-------|
-| Clean small PR / no false bugs | S | ✓ | ✓ | No | Both calibrated |
-| BLE `record` never called | M | ✓ P1 | ✓ high | **Yes (call graph)** | Classic missing write edge |
-| BLE donor splice dead | M | ✓ outside | ✓ medium | **Yes (call graph)** | Caller/callee arity |
-| Schedule payload-only key | M | ✓ P1 | ✓ medium | **Partial** | Data-model; readable in one file but impact is cross-endpoint |
-| `coverage_gain` always 0 | M | ✗ | ✓ | **Yes (call graph)** | Callee default vs caller omission |
-| Dict `=`/`"` parse corruption | M | ✗ | ✓ | No (local) | Lexer/parser nit |
-| `s_prime` fields not plumbed | L | ✓ P1 | ✓ high | **Yes (dataflow)** | Loop locals → metrics → many modules |
-| `bug_id` dropped / stats ∧ | L | ✓ P1 | ✓ high | **Yes (cross-module API)** | Must read `fuzz_stats.note_iteration` |
-| Minimizer `lambda: True` | L | ✓ P1 | ✗ | **Partial** | Visible at call site; policy impact needs corpus favoritism context |
-| Corpus never selected | L | ✗ | ✓ | **Yes (architecture)** | New type unused by selector |
-| Rarity-as-gain favoritism | L | ✗ | ✓ | **Partial** | Score semantics across helpers |
-| Mermaid missing-edge diagrams | M/L | ✓ | ✗ | Product feature | Explains graph narrative to humans |
-| Confidence score 5→2 | all | ✓ | ✗ | Product feature | Merge UX |
-| TREX runtime proof | — | ✗ | ✗ | N/A | Unused |
+- Confidence **5/5**.
+- Accurate summary: bare `BLE`, absolute resume paths, dictionary insert, splice, strategy telemetry, crash-associated intensity.
+- Inline defects: none.
+- Noted BLE entry-point changes match the downstream loader contract.
 
-### 7.2 Did Greptile identify *more* than normal?
-- **More severity-weighted value than a style bot:** yes on medium/large.
-- **More raw comments than Copilot:** no—Copilot listed **more** medium/low items on medium tier.
-- **More unique critical policy bugs:** Greptile’s minimizer finding is a standout Copilot miss.
-- **Less coverage of corpus-selection dead wiring:** Copilot win.
+### 11.2 Copilot
 
-### 7.3 Which findings *truly* need a graph / AST / multi-hop index?
+- **0 bugs.**
 
-**Strong graph/call-graph / dataflow character (hard with diff-only tunnel vision):**
-1. BLE `record` missing while `energy_for`/`rank_queue` read state.
-2. Donor argument never supplied.
-3. `s_prime` dataflow hole affecting coverage + crash triage modules.
-4. `bug_id` contract across classifier → metrics → `FuzzStatsCollector`.
-5. Corpus module vs `choose_next_seed` still on `SeedQ` (architectural orphan).
+### 11.3 Human-in-the-loop alone (modeled)
 
-**Identifiable from a careful single-file or local hunk read (graph helpful but not strictly required):**
-1. Payload-only `seed_fingerprint` keying (local to `power_schedule.py`, impact inferred).
-2. `lambda candidate: True` (local call site; Greptile excelled at stating corpus consequences).
-3. Dict parser `=`/`"` heuristic (local).
+- **Likely:** approve after confirming absolute resume path reaches `start_ble_fuzzing` / existence checks.
+- **Maybe:** note `strategy_hits` never persisted/exported.
+- **Unlikely:** invent false blockers.
 
-**Important nuance:** Copilot (Cursor) also found (1)–(4)-class issues **without** Greptile’s hosted graph. So the experiment supports: **structural reasoning matters**, but **Greptile is not the only system capable of it**. Greptile’s differentiator in-run was **packaging** (confidence, diagrams, outside-diff), **always-on GitHub delivery**, and the **minimizer** catch—not a monopoly on cross-file bugs.
+### 11.4 No reviewer
 
-### 7.4 Evidence Greptile used graph/search tools (inferential)
-We cannot see Greptile’s private tool traces, but the public artifacts strongly imply multi-hop analysis:
-- Outside-diff comment at the exact `mutate_input(seed)` call while the donor parameter was introduced elsewhere.
-- Explicit reference to `FuzzStatsCollector` conjunction semantics defined in another new file.
-- Flowcharts drawing **absent** edges (negative space in the call graph).
-- “Files needing attention” spanning six modules on PR #3.
+- Ships an acceptable small improvement.
 
-Absence of TREX artifacts implies the agent **did not** (or could not) validate via execution.
+### 11.5 Four-way verdict (small)
+
+| Regime | Outcome quality | Value add |
+|--------|-----------------|-----------|
+| No reviewer | Acceptable | Velocity |
+| Copilot | Acceptable (clean bill) | Confirmation |
+| Greptile | Acceptable + confidence 5/5 | Stakeholder packaging |
+| Human alone | Acceptable | Intent check |
+
+**ROI of paid automation on small clean PRs: low.**
 
 ---
 
-## 8. Pros and cons
+## 12. Tier results — Medium (PR #2)
 
-### 8.1 Greptile
+### 12.1 Greptile (confidence 2/5)
 
-**Pros**
-- Persistent **repo graph** + agentic search designed for ripple effects.
-- Always-on GitHub App: summary, **P-levels**, **confidence score**, **diagrams**.
-- High signal on this repo’s medium/large PRs; low false-positive rate on small.
-- Learning system, custom rules, MCP, Fix-with-Agent, optional **TREX** (not used here).
-- Explains *downstream impact* (e.g., “reports show zero crashes”).
+- **P1:** BLE scheduler scores stay empty (`record` never called).
+- **P1:** Endpoint statistics conflated (payload-only fingerprint).
+- **Outside-diff:** BLE splicing unreachable (no donor argument).
+- **Mermaid:** missing `record` edge + donor-not-supplied edge.
 
-**Cons**
-- Paid SaaS (credits/seats); cost stacks with TREX.
-- Missed several real issues Copilot found (coverage_gain arg, corpus unused, rarity-as-gain, dict parse).
-- Summary sometimes paraphrases paths/commit titles.
-- Dense HTML summaries; outside-diff easy to miss.
-- Without TREX, still “smart static”—can be wrong confidently.
-- Overlap with modern agentic Copilot/Cursor reduces uniqueness.
+### 12.2 Copilot
 
-### 8.2 Copilot (Cursor stand-in) / GitHub Copilot product notes
+| Severity | Finding |
+|----------|---------|
+| high | `ble_scheduler.record()` never called |
+| medium | donor splice never invoked |
+| medium | payload-only schedule keys |
+| medium | `coverage_gain` always defaults to 0 at call site |
+| low | dictionary loader corrupts tokens containing `=` and `"` |
 
-**Pros (Cursor as used)**
-- Matched Greptile on most critical integration bugs.
-- Found additional wiring/semantic defects.
-- Already in the IDE workflow; no extra PR bot seat for this path.
-- Flexible base-branch reviews for local branches.
+Soft/disputed: claim that dictionary tokens never reach `mutate_payload`—`mutate_payload` → `random_mutation` can still select `dictionary_insert`.
 
-**Cons (Cursor as used)**
-- Not automatic on GitHub PRs in our setup (process friction).
-- No confidence score / flowchart packaging for stakeholders.
-- Missed minimizer `lambda: True`.
-- One soft false direction on dictionary usage.
-- Findings live in chat unless manually transcribed (as we did into REPORT.md).
+### 12.3 Human-in-the-loop alone (modeled)
 
-**GitHub Copilot product (not run) — expected pros/cons from docs**
-- Pros: native PR reviewer, one-click suggestions, Lite/Balanced, growing project-context/MCP/skills, cloud-agent fix PRs.
-- Cons: credits cost; Comment-only (no merge gate); quality varies; historically weaker than dedicated graph bots on deep multi-hop—but 2026 docs claim fuller project context, so **head-to-head remains unfinished** until credits return.
+- **High:** notice `mutate_input(seed)` vs new donor parameter if carefully reviewing `Smartlock.py`.
+- **High:** ask “who calls `record`?” when reading `ble_energy.py`.
+- **Medium:** catch payload-only fingerprint (requires multi-endpoint mental model).
+- **Lower:** catch dict `=`/`"` parse without adversarial examples.
+- **Medium:** miss `coverage_gain` omission (defaults hide bugs).
 
----
+### 12.4 No reviewer
 
-## 9. End-to-end narrative (what happened)
+- Merges **broken BLE learning** and **cross-endpoint schedule bleed**.
 
-1. **Baseline:** Mature AFL-Fuzzer codebase with HTTP + BLE fuzz loops.
-2. **Small PR:** Mutation + BLE CLI polish. Both reviewers: **safe**. Greptile 5/5.
-3. **Medium PR:** New schedulers + dict. Both reviewers: **BLE feedback/splice unwired**, **schedule key collision**. Greptile 2/5 + diagram. Copilot adds coverage_gain + dict parse.
-4. **Large PR:** New greybox pipeline partially wired. Both: **telemetry/`bug_id` holes**. Greptile: minimizer predicate. Copilot: corpus unused + favoritism decay. Greptile 2/5 + diagram.
-5. **GitHub Copilot:** blocked.
-6. **Buy framing:** Greptile proved its **graph-shaped** value proposition on *this* fuzzer, but Cursor already captures much of that value when an engineer actually runs a thorough review.
+### 12.5 Four-way verdict (medium)
+
+Automation (Greptile **or** Copilot) substantially beats no reviewer. Human alone can match if diligent. Greptile wins packaging; Copilot slightly broader issue list.
 
 ---
 
-## 10. Recommendation
+## 13. Tier results — Large (PR #3)
+
+### 13.1 Greptile (confidence 2/5)
+
+- **P1:** Response telemetry loses outcomes (`s_prime` fields unset).
+- **P1:** Crash identifiers dropped (`bug_id` / `FuzzStatsCollector` conjunction).
+- **P1:** Minimization discards coverage behavior (`lambda candidate: True`).
+- **Mermaid:** result fields not copied; `bug_id` not forwarded; minimizer → favored corpus.
+- **Files needing attention:** `simple_fuzzer2.py`, `fuzz_stats.py`, `coverage_bitmap.py`, `crash_triage.py`, `seed_minimizer.py`, `corpus_manager.py`.
+
+### 13.2 Copilot
+
+| Severity | Finding |
+|----------|---------|
+| high | response metadata never attached to `s_prime` before coverage/triage/stats |
+| high | `bug_id` omitted → crash stats stay 0 |
+| medium | `mark_result` treats rarity / interesting_score as coverage gain |
+| medium | `CorpusManager` populated/persisted but `choose_next_seed` still uses only `SeedQ` |
+
+### 13.3 Human-in-the-loop alone (modeled)
+
+- **High:** “where do status_code/body get onto `s_prime`?” if tracing one request.
+- **High/medium:** `bug_id` plumbing if they open `fuzz_stats.py`.
+- **Medium:** spot `lambda: True` as a smell; may rationalize as “structural only.”
+- **Medium/low under fatigue:** notice corpus never selected (long `choose_next_seed` after seven new modules).
+- **Unique human:** challenge whether HTTP status/body bitmap is valid research “coverage.”
+
+### 13.4 No reviewer
+
+- Merges **lying dashboards**, **polluted favored corpus**, and a **dead corpus manager** relative to live selection—the worst blind-merge tier.
+
+### 13.5 Four-way verdict (large)
+
+No reviewer fails hard. Greptile ∪ Copilot covers nearly the full defect set. Human alone can catch critical telemetry but is least consistent on orphans under fatigue. Ideal: **human + (Greptile or Copilot)**.
+
+---
+
+## 14. Master finding matrix (four-way)
+
+Legend: ✓ detected · ~ partial/possible · ✗ not detected · n/a · **H** = modeled human likelihood
+
+| Finding | Tier | Graph-ish? | No rev | Copilot | Greptile | Human alone |
+|---------|------|------------|--------|---------|----------|-------------|
+| Clean small / no false bugs | S | No | n/a | ✓ | ✓ | ✓ |
+| Unused `strategy_hits` export | S | No | ✗ | ✗ | ✗ | ~ |
+| BLE `record` never called | M | **Yes** | ✗ | ✓ | ✓ | **H high** |
+| BLE donor splice dead | M | **Yes** | ✗ | ✓ | ✓ | **H high** |
+| Schedule payload-only key | M | Partial | ✗ | ✓ | ✓ | **H med** |
+| `coverage_gain` always 0 | M | **Yes** | ✗ | ✓ | ✗ | **H med-low** |
+| Dict `=`/`"` parse bug | M | No | ✗ | ✓ | ✗ | **H low** |
+| `s_prime` telemetry hole | L | **Yes** | ✗ | ✓ | ✓ | **H high** |
+| `bug_id` drop / stats ∧ | L | **Yes** | ✗ | ✓ | ✓ | **H high-med** |
+| Minimizer `lambda: True` | L | Partial | ✗ | ✗ | ✓ | **H med** |
+| Corpus never selected | L | **Yes** | ✗ | ✓ | ✗ | **H med-low** |
+| Rarity-as-gain favoritism | L | Partial | ✗ | ✓ | ✗ | **H low-med** |
+| Confidence score / merge UX | — | Product | ✗ | ✗ | ✓ | ~ (written approval) |
+| Missing-edge Mermaid | — | Product | ✗ | ✗ | ✓ | ~ (whiteboard) |
+| Runtime proof (TREX/tests) | — | Exec | ✗ | ✗ | ✗ | ~ if human runs smoke |
+| Product/ethics/methodology critique | — | Human | ✗ | ✗ | ✗ | ✓ **unique** |
+
+### 14.1 Defect detection counts (medium+large substantive defects)
+
+Counting ~10 substantive defects (excluding clean-PR row, pure UX rows, ethics):
+
+| Regime | Detected | Missed | Notes |
+|--------|----------|--------|-------|
+| No reviewer | 0 | 10 | By definition |
+| Copilot | 8 | 2 | Missed minimizer; soft miss on `strategy_hits` |
+| Greptile | 6 | 4 | Missed coverage_gain, dict parse, corpus unused, rarity-as-gain |
+| Human alone | ~5–8 | ~2–5 | High variance; diligent mid ~6–7 |
+
+**Union(Copilot, Greptile) ≈ 9/10 substantive.**  
+**Union(Human, either bot)** approaches full coverage including ethics/methodology.
+
+---
+
+## 15. Graph / AST necessity analysis
+
+### 15.1 Strongly requires multi-hop / call-graph / dataflow
+
+1. BLE `record` missing while readers exist.
+2. Donor never supplied.
+3. `s_prime` field plumbing across loop → metrics → coverage/triage.
+4. `bug_id` contract across classifier → metrics → `fuzz_stats`.
+5. Corpus module vs `choose_next_seed` still on `SeedQ`.
+
+### 15.2 Locally visible; impact needs graph/policy context
+
+1. Payload-only fingerprint.
+2. `lambda: True` + favored corpus.
+3. Rarity term used as coverage gain.
+
+### 15.3 Local / lexical
+
+1. Dictionary parser `=`/`"` heuristic.
+
+### 15.4 Critical nuance
+
+**Graph reasoning mattered; Greptile’s hosted graph was not the only way to get it.** Copilot (Cursor) performed several multi-hop detections without Greptile’s index. Humans with “Find References” do the same more slowly. Greptile’s differentiator is **forcing that reasoning unattended on every PR** plus packaging (confidence, diagrams).
+
+---
+
+## 16. Did Greptile understand the crux?
+
+| Tier | Crux | Greptile understanding | Grade |
+|------|------|------------------------|-------|
+| Small | Mutation refinements + BLE CLI | Exact | A |
+| Medium | Schedulers must *learn* via feedback | Explicitly called out unreachable feedback/splice | A |
+| Large | Pipeline must plumb results/IDs; honest minimize | Explicit telemetry / `bug_id` / predicate failures | A |
+
+Greptile did **not** fully inventory every orphan (corpus selection). Intent understanding was excellent; defect-search completeness was very good but not perfect.
+
+---
+
+## 17. Volume vs normal review
+
+| Expectation | No rev | Copilot | Greptile | Human |
+|-------------|--------|---------|----------|-------|
+| Style nit flood | — | No | No | Sometimes |
+| Restate PR only | — | No—issues filed | No—issues filed | Varies |
+| Comment count | 0 | Medium, broader | Low, high severity | Variable |
+| False positives | — | One soft FP | Very low here | Possible bikesheds |
+| vs noisy linter bot | — | Fewer, better | Fewer, better | N/A |
+
+Greptile delivered **more severity-weighted value than a normal linter bot**, not more raw comments than Copilot.
+
+---
+
+## 18. Pros and cons (four-way)
+
+### 18.1 No reviewer
+
+**Pros:** Instant merge; zero seat cost; no review thrash.  
+**Cons:** Blind to integration orphans; lying metrics on large tier; no institutional memory; unacceptable for this defect class.
+
+### 18.2 Copilot
+
+**Pros:** Strong defect recall here; catches extras Greptile missed; fits IDE workflow; GitHub product offers Balanced/MCP path.  
+**Cons:** Credits/access blocked the product; Cursor path not always-on GitHub; no confidence/diagram packaging; missed minimizer; soft FP risk; Comment-only reviews do not gate merges.
+
+### 18.3 Greptile
+
+**Pros:** Always-on; confidence scores; Mermaid; P-levels; true integration P1s; crux-aware summaries; optional TREX/rules/learning.  
+**Cons:** Paid; missed several real issues; TREX unused here; paraphrased names; dense HTML summaries; overlap with Copilot reduces uniqueness-for-price.
+
+### 18.4 Human-in-the-loop alone
+
+**Pros:** Intent/ethics/methodology; can run smokes; accountable decisions; best at “should we build this.”  
+**Cons:** Slow; inconsistent; fatigues on large diffs; expensive senior time; may miss exact orphans bots found; not 24/7.
+
+---
+
+## 19. Cost, latency, and process friction
+
+| Regime | Latency | Direct $ | Friction |
+|--------|---------|----------|----------|
+| No reviewer | Minutes | $0 | Deferred incident/debug cost |
+| Copilot (Cursor) | Minutes–tens of minutes (manual) | Cursor subscription (often sunk) | Must remember to run |
+| Copilot (GitHub product) | Seconds–minutes | AI credits / plan | Org policy enablement |
+| Greptile | ~3 minutes typical | Seats + credits (+ TREX) | App install; tune nitpickiness |
+| Human alone | Hours for large PR | Salary / opportunity cost | Scheduling; context switch |
+
+Greptile’s sticker price may be cheaper than a week debugging silent crash stats—yet **redundant** if Cursor/GitHub Copilot reviews are already mandatory and effective.
+
+---
+
+## 20. Failure modes and pitfalls
+
+### 20.1 Shared automation pitfalls
+
+- Hallucinated APIs (not seen here).
+- Over-confidence without runtime (no TREX / no human smoke).
+- Missing product-level wrongness (what “coverage” means).
+
+### 20.2 Greptile-specific pitfalls
+
+- Outside-diff comments easy to miss in the GitHub UI.
+- Assuming graph ⇒ unique findings (false vs Copilot in this study).
+- Paying for TREX but leaving it disabled.
+
+### 20.3 Copilot-specific pitfalls
+
+- Credit exhaustion → silent absence (this experiment).
+- Comment-only reviews do not block merge.
+- Lite effort may under-analyze 2k LOC PRs (untested here).
+
+### 20.4 Human-specific pitfalls
+
+- Diff fatigue; author bias; “looks AFL-complete” illusion; time boxing; inconsistent depth.
+
+### 20.5 No-reviewer pitfalls
+
+- Exactly the medium/large outcomes in §9.
+
+---
+
+## 21. Scenario playbooks
+
+### 21.1 Solo researcher, Cursor already paid
+
+Prefer **human + Copilot (Cursor)**. Add Greptile only if you want unattended GitHub comments for collaborators or future-you.
+
+### 21.2 Team with required PR reviews on GitHub
+
+Prefer **human + Greptile** (or human + GitHub Copilot Balanced). Greptile’s confidence/diagrams help non-authors triage.
+
+### 21.3 Compliance / audit narrative needed
+
+Greptile’s persisted PR summaries + severity badges create an audit trail. Pair with human sign-off. No-reviewer fails audits; Copilot-only may lack merge packaging depending on setup.
+
+### 21.4 Maximum defect recall on a scary PR
+
+Run **Greptile and Copilot**, then human triage of the union. This study’s union caught nearly all substantive issues.
+
+### 21.5 Budget cut
+
+Cut Greptile before cutting human review. Cutting human and keeping only a bot is worse than the reverse for accountability—but cutting *both* automation and human on large integration PRs is worst.
+
+---
+
+## 22. Recommendation and buy decision
+
+### 22.1 Ranked postures (best → worst) for this codebase
+
+1. **Human-in-the-loop + Greptile** (or + Copilot): best defect union + accountability + packaging  
+2. **Human + Copilot** if Greptile budget is tight and Cursor/GitHub Copilot is already paid  
+3. **Greptile alone** or **Copilot alone**: far better than nothing; expect residual misses  
+4. **Human alone**: acceptable with senior diligence; fragile under load / fatigue  
+5. **No reviewer**: unacceptable for medium/large tiers
+
+### 22.2 Should you pay for Greptile?
 
 | Question | Answer |
 |----------|--------|
-| Did Greptile understand the crux? | **Yes** at all three tiers |
-| Did it identify more than a normal noisy bot? | **Yes on severity/signal**; not on raw comment count |
-| Did it identify graph/AST-hard bugs? | **Yes** (missing edges, cross-module contracts); Copilot found many of the same |
-| Did it use advanced tools (TREX)? | **No evidence of TREX**; strong evidence of search/graph reasoning + diagrams |
-| Worth paying vs no automation? | **Yes** for medium/large multi-file work |
-| Worth paying vs Copilot/Cursor already in use? | **Situational** — buy for always-on GitHub UX + diagrams/confidence + occasional unique catches; don’t expect exclusive access to cross-file bugs |
-| Next experiment | Re-enable **GitHub Copilot** Balanced reviews on the same PRs; optionally enable **TREX** and re-diff |
+| vs no reviewer | **Yes** |
+| vs human alone | **Yes as a supplement**, not a replacement |
+| vs Copilot already mandatory | **Situational** — buy for unattended GitHub UX / diagrams / confidence; marginal unique defect rate |
+| Enable TREX if paying? | **Yes**—otherwise leaving a major differentiator off |
+| Shop is mostly tiny clean PRs | Weak ROI |
 
-### Practical guidance
-- **Keep Greptile** if the team wants unattended PR gates and stakeholder-readable summaries.
-- **Skip / defer Greptile** if every PR already gets a Cursor/Bugbot (or GitHub Copilot Balanced) pass and budget is tight—accept the risk of missing packaging + occasional uniques like the minimizer bug.
-- **Fix the shared P1/high findings** on `develop-3` before merging any tier to `main`.
+### 22.3 Concrete next steps
+
+1. Fix the union of P1/high findings on `develop-3` before merging any tier to `main`.  
+2. Re-run **GitHub Copilot Balanced** when credits return; append a true product column.  
+3. Enable **TREX** on a replay of PR #3; compare runtime evidence vs static comments.  
+4. Keep **human approval required** on `main`.
 
 ---
 
-## 11. Appendix A — Confidence & counts
+## 23. Appendices
 
-| PR | Greptile confidence | Greptile inline P1 | Greptile outside | Copilot high | Copilot med | Copilot low |
-|----|---------------------|--------------------|------------------|--------------|-------------|-------------|
+### Appendix A — Verbatim Greptile summaries (essence)
+
+**PR #1:** Expands AFL-style mutation behavior and adjusts BLE command handling; bare `BLE`; resolved resume paths; dictionary insertion; splicing; strategy telemetry; crash-associated intensity. Confidence **5/5**.
+
+**PR #2:** Adds AFL-inspired HTTP/BLE scheduling, dictionary mutations, splicing, resume handling; BLE feedback scheduling and splicing unreachable; HTTP scheduling conflates identical payloads across endpoints. Confidence **2/5**. Files needing attention: `BLE/Smartlock.py`, `power_schedule.py`.
+
+**PR #2 P1 (empty scores):** `assign_energy` / `choose_next` read scheduler without `ble_scheduler.record` → length-only energy.
+
+**PR #2 P1 (conflated stats):** `ensure_stats` keys only on payload fingerprint → cross-endpoint bleed.
+
+**PR #2 outside-diff:** `mutate_input(seed)` omits donor → splice unreachable.
+
+**PR #3:** Adds corpus / coverage / scheduling / crash-triage / havoc / minimize / replay / report; loses request-result data and bug IDs before telemetry; unverified minimized payloads favored. Confidence **2/5**.
+
+**PR #3 P1 (telemetry):** loop never copies status/body/error into `s_prime` → collapsed coverage / merged crashes.
+
+**PR #3 P1 (`bug_id`):** `note_iteration` without `bug_id` while collector requires `reveals_bug and bug_id` → zero crashes in reports.
+
+**PR #3 P1 (minimizer):** `lambda candidate: True` accepts every deletion; favored corpus polluted.
+
+### Appendix B — Graph-hop reconstructions
+
+- **BLE `record`:** define scheduler → wire readers in `Smartlock.py` → search writers → zero `record` calls → length-only energy.  
+- **Donor:** new parameter → only call site omits donor → dead branch.  
+- **`s_prime`:** metrics read fields → loop never sets them → coverage/triage degrade.  
+- **`bug_id`:** classifier id → not passed → `fuzz_stats` conjunction → zero counts.  
+- **Minimizer:** `True` predicate → trim always succeeds → favored add → policy bug.  
+- **Corpus unused:** corpus `add`/`save` → `choose_next_seed` only uses `SeedQ` → architectural orphan.
+
+### Appendix C — Confidence and counts
+
+| PR | Greptile conf | Greptile P1 | Outside | Copilot H | Copilot M | Copilot L |
+|----|---------------|-------------|---------|-----------|-----------|-----------|
 | #1 | 5/5 | 0 | 0 | 0 | 0 | 0 |
 | #2 | 2/5 | 2 | 1 | 1 | 4 | 1 |
 | #3 | 2/5 | 3 | 0 | 2 | 2 | 0 |
 
-## 12. Appendix B — Code SHAs
+### Appendix D — References
 
-| Artifact | SHA |
-|----------|-----|
-| Small code | `c82a6cf196bb3d1bfe4434088ce1092784db85d8` |
-| Medium code | `ce356ed1471c78092f0c05769c7c780d064b0163` |
-| Large code | `6a2233a35474118cac65ec89940e45996e2c93ec` |
-
-## 13. Appendix C — Status stamp
-- **Date:** 2026-08-26  
-- **Greptile:** complete on PRs #1–#3  
-- **GitHub Copilot product:** unavailable  
-- **Copilot (Cursor Bugbot):** complete on all three diffs  
-- **TREX:** not observed  
-- **Report revision:** comprehensive rewrite after product-doc research + full finding matrix  
-
-## 14. Appendix D — Primary references
 1. https://www.greptile.com/docs/introduction  
 2. https://www.greptile.com/docs/how-greptile-works/graph-based-codebase-context  
 3. https://www.greptile.com/docs/code-review/first-pr-review  
@@ -411,148 +730,24 @@ Absence of TREX artifacts implies the agent **did not** (or could not) validate 
 6. https://www.greptile.com/blog/trex-code-execution  
 7. https://docs.github.com/en/copilot/concepts/agents/code-review  
 8. https://docs.github.com/copilot/using-github-copilot/code-review/using-copilot-code-review  
+9. https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1 · [/pull/2](https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2) · [/pull/3](https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3)
 
+### Appendix E — Status stamp
 
----
+- Greptile: complete on PRs #1–#3  
+- GitHub Copilot product: unavailable  
+- Copilot (Cursor Bugbot): complete  
+- Human-in-the-loop: modeled (not a separate hired blind review)  
+- No reviewer: counterfactual  
+- TREX: not observed  
+- Document revision: four-way comprehensive expansion with full HTML twin  
 
-## 15. Appendix E — Verbatim Greptile summaries (captured)
+### Appendix F — Glossary
 
-### E.1 PR #1 summary (essence)
-> The PR expands AFL-style mutation behavior and adjusts BLE command handling.
-> - Accepts bare `BLE` invocations and passes validated resume files as resolved paths.
-> - Adds dictionary insertion, payload splicing, and mutation-strategy telemetry.
-> - Increases mutation intensity for crash-associated endpoints and occasionally splices same-path corpus seeds.
->
-> **Confidence Score: 5/5** — appears safe to merge; BLE entry-point changes match the downstream loader contract; new mutation/crash-bias paths operate on established seed and correlation data shapes.
-
-### E.2 PR #2 summary (essence)
-> The PR adds AFL-inspired HTTP and BLE scheduling, dictionary-backed mutations, cross-seed splicing, and reliable BLE resume-path handling. The BLE integration leaves both feedback-based scheduling and splicing unreachable, while HTTP scheduling conflates identical payloads across endpoints.
->
-> **Confidence Score: 2/5** — should not merge until BLE scheduling/splicing connected and HTTP schedule state isolated by endpoint.
->
-> BLE campaign outcomes never populate the scheduler, its splice branch never receives a donor, and identical HTTP payloads share scheduling history across unrelated paths and methods.
->
-> **Files needing attention:** `BLE/Smartlock.py`, `power_schedule.py`
-
-**Inline P1 — Scheduler scores stay empty** (`BLE/Smartlock.py`):
-> During every BLE campaign, `assign_energy` and `choose_next` read from the scheduler without any execution path calling `ble_scheduler.record`, causing energy to remain length-only and queue weights to receive no novelty or crash boosts.
-
-**Inline P1 — Endpoint statistics are conflated** (`power_schedule.py`):
-> When the same payload is scheduled for multiple paths or methods, `ensure_stats` uses only the payload fingerprint as its key, causing executions, coverage, crashes, and energy decay from one endpoint to affect another while summary metadata remains tied to the first endpoint.
-
-**Outside diff — BLE splicing unreachable** (`BLE/Smartlock.py:279`):
-> The campaign's only `mutate_input` call omits the donor argument, leaving it as `None` and preventing the new splice guard from ever passing.
-
-### E.3 PR #3 summary (essence)
-> This PR adds an AFL-style corpus, coverage, scheduling, crash-triage, havoc, minimization, replay, and reporting pipeline and integrates it with the HTTP and BLE fuzzers. The integration currently loses request-result data and bug identifiers before telemetry, and records unverified minimized payloads as favored coverage seeds.
->
-> **Confidence Score: 2/5** — not safe to merge until request outcomes and bug identifiers reach telemetry and minimized corpus entries are validated.
->
-> **Files needing attention:** `simple_fuzzer2.py`, `fuzz_stats.py`, `coverage_bitmap.py`, `crash_triage.py`, `seed_minimizer.py`, `corpus_manager.py`
-
-**Inline P1 — Response telemetry loses outcomes:**
-> `update_energy_metrics` reads `status_code`, `response_body`, and `error` from `s_prime`, but the request loop never copies its local result values there. This collapses every outcome for a path and method into the same `ERR`/`none` coverage bucket…
-
-**Inline P1 — Crash identifiers are dropped:**
-> …calls `note_iteration` without `bug_id`. Because `FuzzStatsCollector` records crashes only when both `reveals_bug` and `bug_id` are set, the generated statistics and campaign report show zero total and unique crashes…
-
-**Inline P1 — Minimization discards coverage behavior:**
-> …unconditional `lambda candidate: True` lets the minimizer accept every structural deletion without verifying that coverage is preserved. The reduced payload is then persisted as a favored, higher-scored corpus entry…
-
----
-
-## 16. Appendix F — Graph-hop reconstruction (why these are “graph” bugs)
-
-This section reconstructs the *minimum* reasoning hops a reviewer (human or agent) must take. Greptile’s product thesis is that a prebuilt graph + search makes these hops cheap and reliable.
-
-### F.1 BLE `record` missing (medium)
-1. See `BLEEnergyScheduler.record` / `energy_for` / `rank_queue` definitions in `ble_energy.py`.
-2. See `assign_energy` → `ble_scheduler.energy_for` and `choose_next` → `rank_queue` in `Smartlock.py`.
-3. Search all references to `ble_scheduler.record` / `observe_transition` in the campaign.
-4. Observe **zero write-path calls** inside `afl_fuzz`.
-5. Conclude energy novelty/crash terms never move → length-only behavior.
-
-Without step 3–4 (repo-wide reference search / call graph), a diff-only reader who only opens `ble_energy.py` may think the feature is complete.
-
-### F.2 Donor splice dead (medium)
-1. See `mutate_input(seed, donor=None)` and `if donor is not None and random.random() < 0.2`.
-2. Find call sites of `mutate_input`.
-3. Only call is `mutate_input(seed)` → donor always `None`.
-4. Feature unreachable.
-
-This is a one-hop caller check—graph helps; grepping also works. Greptile’s **outside-diff** placement shows it inspected the call site even when commenting relative to the broader PR narrative.
-
-### F.3 `s_prime` telemetry hole (large)
-1. In `update_energy_metrics`, see reads of `s_prime["status_code"]` / `response_body` / `error`.
-2. See those values fed into `coverage_bitmap.observe` and `crash_triage.record`.
-3. Jump to the HTTP request loop that constructs `s_prime`.
-4. Observe locals for status/body/error are **never assigned** onto `s_prime` before the call.
-5. Infer collapsed coverage buckets and merged crash signatures.
-
-This is multi-module **dataflow**, Greptile’s advertised strength. Copilot found the same.
-
-### F.4 `bug_id` ∧ `reveals_bug` (large)
-1. See classifier producing a bug id in the loop.
-2. See `update_energy_metrics` / `note_iteration` call **without** `bug_id=`.
-3. Open `fuzz_stats.py` and read `if reveals_bug and bug_id:`.
-4. Conclude reports undercount crashes to zero.
-
-Requires reading a **new file’s API contract** not visible in the call-site hunk alone—index/search helps.
-
-### F.5 Minimizer `lambda: True` (large) — Greptile unique
-1. See `seed_minimizer.trim(..., still_interesting=lambda candidate: True)`.
-2. Understand `SeedMinimizer` accepts deletions whenever predicate returns true.
-3. See trimmed seed `corpus.add(..., favored=True, weight=1.7)`.
-4. Conclude favored corpus polluted with unverified shrinks.
-
-Copilot missed this. Possible reasons: attention on telemetry holes; predicate looks “intentionally structural” without following corpus favoritism policy. Greptile explicitly tied predicate → favored corpus—**policy graph**, not syntax.
-
-### F.6 Corpus unused (large) — Copilot unique
-1. See `CorpusManager` constructed, `add`/`mark_result`/`save` used.
-2. Read `choose_next_seed` end-to-end.
-3. Observe only `SeedQ` / legacy weights—no `corpus.choose` (or equivalent).
-4. Conclude architectural orphan.
-
-Greptile listed `corpus_manager.py` under “files needing attention” but did **not** emit this specific P1. Copilot did.
-
----
-
-## 17. Appendix G — What “normal” review would look like vs what we got
-
-| Review style | Typical output on these PRs | What we observed |
-|--------------|-----------------------------|------------------|
-| Style/linter bot | Naming, imports, line length | **Neither** Greptile nor Copilot spammed style |
-| Diff-only LLM skim | Restate PR; maybe local null checks | Greptile/Copilot went deeper |
-| Careful human senior review | Likely catch unwired BLE + telemetry; maybe miss one of minimizer/corpus | Matches combined bot union |
-| Greptile alone | Integration P1s + diagrams + confidence | Observed |
-| Copilot alone | Integration highs + extras; no diagrams | Observed |
-| Greptile + TREX (hypothetical) | Possibly runtime proof that stats stay zero / energy never changes | **Not observed** |
-
-**Interpretation:** For this experiment, Greptile performed like a **strong senior static reviewer with call-graph habits**, not like a nitpicking style bot. Copilot performed similarly on defect finding, weaker on stakeholder packaging, stronger on a couple of orphans.
-
----
-
-## 18. Appendix H — Limitations of this study
-1. **GitHub Copilot product absent** — Cursor stand-in may over- or under-estimate GitHub Copilot Balanced.
-2. **No TREX** — cannot judge Greptile’s execution differentiator.
-3. **Single codebase / domain** (Python fuzzers)—graph value may differ for monorepos/polyglot services.
-4. **Authors of the buggy wiring were agents** — defects are realistic integration bugs but not organic human mistakes.
-5. **No user 👍/👎 training window** — Greptile learning system unused.
-6. **Inference of tool use** — no access to Greptile’s private agent traces; evidence is behavioral.
-7. REPORT commits on branches slightly shift tip SHAs after code SHAs under review.
-
----
-
-## 19. Appendix I — Buy decision checklist
-
-Use this checklist when deciding whether to pay for Greptile given Copilot/Cursor:
-
-- [ ] Do we need **unattended** reviews on every GitHub PR?
-- [ ] Do PMs/leads want **confidence scores + diagrams** without opening an IDE?
-- [ ] Are most bugs we fear **cross-file integration** bugs?
-- [ ] Will we enable **TREX** (otherwise missing Greptile’s runtime wedge)?
-- [ ] Is Cursor/GitHub Copilot Balanced **already mandatory** on every PR?
-- [ ] Is $ / seat / credit burn acceptable for marginal unique catches (~minimizer-class)?
-
-**If the first three are yes and TREX will be enabled → pay.**  
-**If Cursor review is already mandatory and budget is tight → defer; re-evaluate after GitHub Copilot Balanced head-to-head.**
+- **AST:** Abstract Syntax Tree—structural parse of code.  
+- **Call graph:** nodes = functions; edges = calls.  
+- **Dataflow:** how values move across variables and calls.  
+- **HITL:** Human-in-the-loop.  
+- **P0/P1/P2:** Greptile severity badges.  
+- **TREX:** Greptile Test / Run / Execute sandbox agent.  
+- **SeedQ:** legacy HTTP seed queue inside `FuzzerClient`.  
