@@ -9,14 +9,18 @@ import argparse
 
 
 BASE_DIR = Path(__file__).parent.resolve()
+REPO_ROOT = BASE_DIR.parent
 os.chdir(BASE_DIR)
 sys.path.append(str(BASE_DIR))
+sys.path.append(str(REPO_ROOT))
 
 from BLEClient import BLEClient
+from ble_energy import BLEEnergyScheduler, splice_sequences
 # === Configuration ===
 DEVICE_NAME = "Smart Lock [Group 11]"
 PASSCODE = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06]
 AUTH_OPCODE = 0x00
+ble_scheduler = BLEEnergyScheduler()
 
 SEED_INPUTS = [
     [[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06]],
@@ -53,14 +57,18 @@ def make_hashable(x):
     return x
 
 # === Mutation ===
-def mutate_input(seed):
+def mutate_input(seed, donor=None):
     # Deep copy the seed properly
     m = [cmd.copy() for cmd in seed]  # every element is a list
+    # Occasional AFL-style splice against another queue entry
+    if donor is not None and random.random() < 0.2:
+        m = splice_sequences(m, donor)
     num_mutations = random.randint(1, 4)
 
     for _ in range(num_mutations):
         mutation_type = random.choice([
-            'insert_list', 'delete_list', 'duplicate_list', 'mutate_inside_list'
+            'insert_list', 'delete_list', 'duplicate_list', 'mutate_inside_list',
+            'interesting_byte',
         ])
 
         if mutation_type == 'insert_list':
@@ -96,24 +104,38 @@ def mutate_input(seed):
                 elif sub_mutation == 'replace_byte':
                     elem_list[byte_idx] = random.randint(0, 255)
 
+        elif mutation_type == 'interesting_byte' and len(m) > 0:
+            # AFL-style interesting values that often trip parsers / bounds checks
+            idx = random.randint(0, len(m) - 1)
+            if m[idx]:
+                byte_idx = random.randint(0, len(m[idx]) - 1)
+                m[idx][byte_idx] = random.choice(
+                    [0x00, 0x01, 0x7F, 0x80, 0xFF, 0x20, 0x0A, 0x0D]
+                )
+
     return m[:256]  # Limit total number of lists
 
 # === Energy Assignment ===
 def assign_energy(seed):
-    base_energy = 5
-    bonus = min(len(seed) // 2, 5)
-    return base_energy + bonus
+    # Prefer the shared BLE scheduler when available; fall back to length heuristic
+    try:
+        return ble_scheduler.energy_for(seed)
+    except Exception:
+        base_energy = 5
+        bonus = min(len(seed) // 2, 5)
+        return base_energy + bonus
 
 # === Queue Selection ===
 def choose_next(queue):
-    total_weight = sum(w for _, w in queue)
+    ranked = ble_scheduler.rank_queue(queue)
+    total_weight = sum(w for _, w in ranked) or 1.0
     choice = random.uniform(0, total_weight)
     upto = 0
-    for seq, weight in queue:
+    for seq, weight in ranked:
         if upto + weight >= choice:
             return seq
         upto += weight
-    return random.choice(queue)[0]
+    return random.choice(ranked)[0]
 
 # === Interestingness Heuristic ===
 def is_interesting(responses, logs):

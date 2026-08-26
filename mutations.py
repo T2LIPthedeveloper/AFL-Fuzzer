@@ -38,6 +38,28 @@ class MutationEngine:
         ])
         # Lightweight counters for mutation strategy selection telemetry
         self.strategy_hits = {}
+
+    @classmethod
+    def from_dictionary_file(cls, path):
+        """Construct an engine and load dictionary tokens from an AFL .dict file."""
+        tokens = []
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    # Support optional name="value" AFL dict syntax
+                    if "=" in line and '"' in line:
+                        try:
+                            tokens.append(line.split("=", 1)[1].strip().strip('"'))
+                            continue
+                        except Exception:
+                            pass
+                    tokens.append(line)
+        except FileNotFoundError:
+            logger.warning("Dictionary file not found: %s (using built-ins)", path)
+        return cls(dictionary_tokens=tokens or None)
     
     # --- Core Mutation Strategies ---
     def _mutate_integer(self, value):

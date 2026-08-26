@@ -1,0 +1,42 @@
+# AFL-style dictionary tokens for HTTP / Django API fuzzing
+# One token per line. Lines starting with # are ignored.
+
+../
+..\\
+%00
+%0a
+%0d%0a
+%2e%2e%2f
+{{7*7}}
+${7*7}
+' OR 1=1--
+" OR "1"="1
+admin
+root
+null
+undefined
+NaN
+Infinity
+Bearer 
+Basic YWRtaW46YWRtaW4=
+application/json
+text/html
+multipart/form-data
+Content-Length: 0
+Transfer-Encoding: chunked
+
+{"$gt":""}
+{"$ne":null}
+<script>alert(1)</script>
+../../../../etc/passwd
+/proc/self/environ
+{{constructor.constructor('return this')()}}
+__proto__
+constructor
+prototype
+true
+false
+[]
+{}
+""
+''
