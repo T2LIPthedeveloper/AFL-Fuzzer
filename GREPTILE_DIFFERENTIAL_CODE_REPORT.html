@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Greptile vs Copilot — Differential Report</title>
+  <style>
+    :root { --bg:#0f1419; --card:#1b222c; --text:#e7ecf1; --muted:#9aa7b5; --accent:#9ecbff; --good:#7dcea0; --bad:#f5b7b1; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 32px; line-height: 1.5; }
+    h1,h2,h3 { color: var(--accent); }
+    .card { background: var(--card); border-radius: 12px; padding: 20px 24px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a3441; vertical-align: top; }
+    .yes { color: var(--good); font-weight: 600; }
+    .no { color: var(--bad); font-weight: 600; }
+    a { color: var(--accent); }
+    code { background: #10161d; padding: 1px 6px; border-radius: 4px; }
+    .verdict { font-size: 1.15rem; }
+  </style>
+</head>
+<body>
+  <h1>Greptile vs Copilot Differential Report</h1>
+  <p class="verdict card"><strong>Verdict:</strong> Greptile’s cross-file/graph findings on medium and large AFL-fuzzer PRs showed clear additional benefit. Copilot standard reviews were <span class="no">not received</span> (product/access blocker), so head-to-head pricing value vs Copilot is <em>inconclusive</em> until Copilot is enabled.</p>
+
+  <div class="card">
+    <h2>PR ladder</h2>
+    <table>
+      <tr><th>Tier</th><th>PR</th><th>LOC vs main</th><th>Greptile</th><th>Copilot</th></tr>
+      <tr><td>Small</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1">#1</a></td><td>+93/−8</td><td class="yes">5/5, no P1s</td><td class="no">Missing</td></tr>
+      <tr><td>Medium</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2">#2</a></td><td>+618/−21</td><td class="yes">2/5, 2 P1s + wiring gaps</td><td class="no">Missing</td></tr>
+      <tr><td>Large</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3">#3</a></td><td>+2432/−23</td><td class="yes">2/5, 3 P1 dataflow bugs</td><td class="no">Missing</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Greptile unique value observed</h2>
+    <ul>
+      <li>Missing BLE scheduler feedback / splice donor edges</li>
+      <li>Power-schedule payload key collisions across endpoints</li>
+      <li>Request result fields not plumbed into metrics → collapsed coverage</li>
+      <li><code>bug_id</code> dropped so crash stats stay zero</li>
+      <li>Minimizer <code>lambda: True</code> polluting favored corpus</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Benefits / pitfalls</h2>
+    <p><strong>Benefits:</strong> integration-bug detection, calibrated confidence, impact narratives, fast GitHub App delivery.</p>
+    <p><strong>Pitfalls:</strong> paraphrased names, dense HTML summaries, weaker ROI on tiny clean PRs.</p>
+    <p><strong>Copilot:</strong> enable code review on the org/repo, then update <code>REPORT.md</code> files and this collated analysis.</p>
+  </div>
+
+  <p style="color:var(--muted)">Full write-up: <code>GREPTILE_DIFFERENTIAL_CODE_REPORT.md</code> on <code>develop-3</code>. Per-PR detail in each branch’s <code>REPORT.md</code>.</p>
+</body>
+</html>
