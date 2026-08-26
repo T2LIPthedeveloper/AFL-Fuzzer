@@ -19,7 +19,7 @@ class MutationEngine:
     - random_mutation: Selects one mutation strategy randomly
     """
     
-    def __init__(self):
+    def __init__(self, dictionary_tokens=None):
         # Special characters that often trigger parsing errors
         self.special_chars = [
             "'", "\"", "<", ">", "&", ";", "|", "`", "$", "(", ")", "*", "\\", "\0", 
@@ -30,6 +30,36 @@ class MutationEngine:
         self.interesting_numbers = [
             0, -1, 1, 255, 256, 0x7F, 0xFF, 0x7FFF, 0xFFFF, 0x80000000, 0xFFFFFFFF
         ]
+
+        # Optional AFL-style dictionary tokens (HTTP / API keywords)
+        self.dictionary_tokens = list(dictionary_tokens or [
+            "../", "%00", "{{7*7}}", "' OR 1=1--", "null", "undefined",
+            "admin", "Bearer ", "application/json", "\r\n\r\n",
+        ])
+        # Lightweight counters for mutation strategy selection telemetry
+        self.strategy_hits = {}
+
+    @classmethod
+    def from_dictionary_file(cls, path):
+        """Construct an engine and load dictionary tokens from an AFL .dict file."""
+        tokens = []
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    # Support optional name="value" AFL dict syntax
+                    if "=" in line and '"' in line:
+                        try:
+                            tokens.append(line.split("=", 1)[1].strip().strip('"'))
+                            continue
+                        except Exception:
+                            pass
+                    tokens.append(line)
+        except FileNotFoundError:
+            logger.warning("Dictionary file not found: %s (using built-ins)", path)
+        return cls(dictionary_tokens=tokens or None)
     
     # --- Core Mutation Strategies ---
     def _mutate_integer(self, value):
@@ -332,6 +362,59 @@ class MutationEngine:
         pos = random.randint(0, len(string_data) - 1)
         return string_data[:pos] + string_data[pos+1:]
     
+    def _record_strategy(self, name):
+        self.strategy_hits[name] = self.strategy_hits.get(name, 0) + 1
+
+    def dictionary_insert(self, data):
+        """Insert an AFL-style dictionary token into string content."""
+        token = random.choice(self.dictionary_tokens)
+        if isinstance(data, str):
+            pos = random.randint(0, len(data))
+            return data[:pos] + token + data[pos:]
+        if isinstance(data, dict):
+            mutated = copy.deepcopy(data)
+            string_fields = [(k, v) for k, v in mutated.items() if isinstance(v, str)]
+            if string_fields:
+                key, value = random.choice(string_fields)
+                pos = random.randint(0, len(value))
+                mutated[key] = value[:pos] + token + value[pos:]
+            return mutated
+        return data
+
+    def splice(self, data, other=None):
+        """
+        AFL-inspired splice: combine halves of two payloads.
+        When *other* is omitted, splice against a shallow structural twin.
+        """
+        if other is None:
+            other = copy.deepcopy(data)
+            if isinstance(other, dict) and other:
+                # Nudge one field so the splice is not a no-op
+                key = random.choice(list(other.keys()))
+                if isinstance(other[key], str):
+                    other[key] = other[key] + random.choice(self.special_chars)
+                elif isinstance(other[key], int):
+                    other[key] = self._mutate_integer(other[key])
+
+        if isinstance(data, str) and isinstance(other, str) and data and other:
+            cut_a = random.randint(0, len(data))
+            cut_b = random.randint(0, len(other))
+            return data[:cut_a] + other[cut_b:]
+
+        if isinstance(data, dict) and isinstance(other, dict):
+            spliced = copy.deepcopy(data)
+            if other:
+                donor_key = random.choice(list(other.keys()))
+                spliced[donor_key] = copy.deepcopy(other[donor_key])
+            return spliced
+
+        if isinstance(data, list) and isinstance(other, list) and data and other:
+            cut_a = random.randint(0, len(data))
+            cut_b = random.randint(0, len(other))
+            return data[:cut_a] + other[cut_b:]
+
+        return data
+
     def random_mutation(self, data):
         """Apply a randomly selected mutation strategy"""
         strategy = random.choice([
@@ -341,8 +424,11 @@ class MutationEngine:
             "random_byte_str", 
             "random_byte_int",
             "delete_bytes",
-            "special_chars"
+            "special_chars",
+            "dictionary_insert",
+            "splice",
         ])
+        self._record_strategy(strategy)
         
         if strategy == "bitflip":
             return self.bitflip(data, random.randint(1, 3))
@@ -356,6 +442,10 @@ class MutationEngine:
             return self.random_byte_int(data, random.randint(1, 2))
         elif strategy == "delete_bytes":
             return self.delete_bytes(data, random.randint(1, 3))
+        elif strategy == "dictionary_insert":
+            return self.dictionary_insert(data)
+        elif strategy == "splice":
+            return self.splice(data)
         elif strategy == "special_chars" and (isinstance(data, str) or isinstance(data, dict)):
             # Insert special characters that often trigger vulnerabilities
             if isinstance(data, str):

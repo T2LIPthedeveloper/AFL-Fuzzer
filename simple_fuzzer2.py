@@ -12,6 +12,7 @@ import subprocess
 import re
 import tabulate
 from mutations import MutationEngine
+from power_schedule import PowerSchedule, parse_schedule_mode
 
 # --- Logging configuration ---
 # Set up a logger for the fuzzer with both file and console handlers
@@ -334,10 +335,17 @@ class FuzzerClient:
         self.initialize_energy_tracking()
 
         # Initialize the mutation engine
-        self.mutation_engine = MutationEngine()
+        self.mutation_engine = MutationEngine.from_dictionary_file(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "dictionaries", "http_api.dict")
+        )
 
         # Initialize the bug classifier
         self.bug_classifier = BugClassifier()
+
+        # Medium-tier: AFL-inspired power schedule for energy assignment
+        schedule_mode = parse_schedule_mode(os.environ.get("AFL_POWER_SCHEDULE", "fast"))
+        self.power_schedule = PowerSchedule(mode=schedule_mode)
+        logger.info("Power schedule mode=%s", self.power_schedule.mode.value)
     def load_openapi_spec(self, openapi_file):
         """Load the OpenAPI specification from a JSON file."""
         try:
@@ -520,6 +528,15 @@ class FuzzerClient:
                 self.crash_correlation[path][method] = 0
             self.crash_correlation[path][method] += 1
 
+        # Feed medium-tier schedule telemetry
+        self.power_schedule.record_execution(
+            seed,
+            path,
+            method,
+            coverage_gain=float(coverage_gain or 0),
+            reveals_bug=reveals_bug,
+        )
+
     def create_session_folder(self):
         """Create a numbered session folder for storing results"""
         base_folder = os.path.join("sessions")
@@ -618,6 +635,13 @@ class FuzzerClient:
         # Also save bug summary to session folder
         with open(os.path.join(self.session_folder, "bug_summary.txt"), "w") as f:
             f.write(self.bug_classifier.generate_summary_table())
+
+        # Persist medium-tier power-schedule snapshot
+        try:
+            with open(os.path.join(self.session_folder, "power_schedule.json"), "w") as f:
+                json.dump(self.power_schedule.summary(), f, indent=2)
+        except Exception as exc:
+            logger.warning("Failed to persist power schedule snapshot: %s", exc)
         
         logger.info(f"Session data saved to {self.session_folder}")
 
@@ -633,13 +657,25 @@ class FuzzerClient:
             current_path = path.replace("{id}", id_value)
 
         # Determine mutation intensity based on path/method performance, mutation intensity is for the number of individual mutations done by the MutationEngine
-        if random.random() < 0.7:  # 70% small mutations
+        # Bias toward havoc-style larger stacks when the endpoint has prior crashes (AFL-like)
+        path_method_key = f"{method}:{path}"
+        crash_hot = (
+            hasattr(self, "crash_correlation")
+            and path in self.crash_correlation
+            and method in self.crash_correlation.get(path, {})
+        )
+        havoc_bias = 0.45 if crash_hot else 0.30
+        if random.random() < (1.0 - havoc_bias):
             mutation_count = random.randint(1, 3)
-        else:  # 30% larger mutations
-            mutation_count = random.randint(4, 10)
+        else:
+            mutation_count = random.randint(4, 12)
         
         # Use the MutationEngine defined in mutations.py instead of custom mutation functions to produce a mutated seed (test case)
         mutated_seed = self.mutation_engine.mutate_payload(seed, num_mutations=mutation_count)
+        # Occasional cross-seed splice against another corpus entry for the same path
+        if random.random() < 0.15 and path in self.SeedQ and self.SeedQ[path].get("seeds"):
+            donor = random.choice(self.SeedQ[path]["seeds"])
+            mutated_seed = self.mutation_engine.splice(mutated_seed, donor)
         
         # Generate a unique hash for this mutation to track it
         mutation_id = hashlib.md5(
@@ -748,14 +784,23 @@ class FuzzerClient:
         adjusted_energy = base_energy * size_factor * coverage_impact * path_frequency * age_factor * crash_factor
         
         # Enforce min/max bounds and ensure integer output
-        final_energy = int(max(3, min(50, adjusted_energy)))
+        legacy_energy = int(max(3, min(50, adjusted_energy)))
+
+        # Blend legacy heuristic with the dedicated PowerSchedule module
+        schedule_energy = self.power_schedule.calculate_energy(
+            seed,
+            path,
+            method,
+            extra_multiplier=crash_factor * coverage_impact,
+        )
+        final_energy = int(max(3, min(50, round(0.45 * legacy_energy + 0.55 * schedule_energy))))
         
         # Log why this energy was assigned for debugging
         logger.debug(
             f"Energy assigned: {final_energy} for {method} {path} "
-            f"(size:{seed_size}, size_factor:{size_factor:.2f}, "
-            f"coverage:{coverage_impact:.2f}, path:{path_frequency:.2f}, "
-            f"age:{age_factor:.2f}, crash:{crash_factor:.2f})"
+            f"(legacy:{legacy_energy}, schedule:{schedule_energy}, size:{seed_size}, "
+            f"size_factor:{size_factor:.2f}, coverage:{coverage_impact:.2f}, "
+            f"path:{path_frequency:.2f}, age:{age_factor:.2f}, crash:{crash_factor:.2f})"
         )
         
         return final_energy
