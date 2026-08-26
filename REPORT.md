@@ -3,12 +3,12 @@
 **PR:** https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2  
 **Branch:** `develop-2` → `main`  
 **Tier:** MEDIUM (~500–600 LOC including small-tier base)  
-**Head SHA:** `ce356ed1471c78092f0c05769c7c780d064b0163`  
+**Head SHA (code):** `ce356ed1471c78092f0c05769c7c780d064b0163`  
 **LOC vs main:** +618 / −21  
 
 ## Experiment context
 
-Second rung of the Greptile vs GitHub Copilot (standard) comparison ladder. Contains all `develop-1` changes **plus** medium-tier power scheduling and BLE energy helpers.
+Second rung of the Greptile vs standard reviewer ladder. Contains all `develop-1` changes **plus** medium-tier power scheduling and BLE energy helpers. Copilot unavailable; **Cursor Bugbot** used as stand-in.
 
 ### Code changes in this tier (additive on small)
 - `power_schedule.py` — Fast/Explore/Exploit/COE-style energy assignment
@@ -21,60 +21,62 @@ Second rung of the Greptile vs GitHub Copilot (standard) comparison ladder. Cont
 
 | Reviewer | Status | Notes |
 |----------|--------|-------|
-| **Greptile** | Received | Summary + **2 inline P1s** + 1 outside-diff note; confidence **2/5** |
-| **GitHub Copilot** | **Not received** | Same access blocker as PR #1 |
+| **Greptile** | Received | Summary + **2 inline P1s** + outside-diff; confidence **2/5** |
+| **GitHub Copilot** | **Not received** | Credits / collaborator 422 |
+| **Cursor Bugbot** (stand-in) | Received | 1 high + 4 medium + 1 low |
 
 ## What Greptile found
 
-### Summary (confidence 2/5)
-- Accurately described AFL-inspired HTTP/BLE scheduling, dictionary mutations, splicing, and BLE resume-path handling
-- Flagged that BLE feedback scheduling / splicing are **not fully wired into the campaign loop**
-- Flagged that HTTP schedule state can **conflate identical payloads across endpoints**
+1. **`BLE/Smartlock.py` — Scheduler scores stay empty (P1)** — `assign_energy` / `choose_next` read scheduler state but campaign never calls `record`
+2. **`power_schedule.py` — Endpoint statistics conflated (P1)** — fingerprint keyed only on payload
+3. **Outside-diff:** BLE splicing unreachable — `mutate_input(seed)` omits donor
+4. Mermaid flowchart of missing edges; confidence correctly low (2/5)
 
-### Inline findings (unique graph / cross-file style)
-1. **`BLE/Smartlock.py` — Scheduler scores stay empty (P1)**  
-   Greptile traced that `assign_energy` / `choose_next` read scheduler state but no campaign path calls a `record`-style feedback API, so energy stays length-only.  
-   **Why this is graph-like:** requires following call graph from campaign loop → scheduler API → missing write edge.
+## What Cursor Bugbot found
 
-2. **`power_schedule.py` — Endpoint statistics conflated (P1)**  
-   Fingerprint keyed only on payload, so the same body on different path/method pairs shares execution/crash/energy history.  
-   **Why this is graph-like:** data-model / keying insight across schedule consumers, not a local syntax issue.
+| Severity | Location | Finding |
+|----------|----------|---------|
+| high | `BLE/Smartlock.py:290-293` | `ble_scheduler.record()` never called → length-only energy |
+| medium | `BLE/Smartlock.py:279` | Donor splice never invoked |
+| medium | `power_schedule.py:80-93` | Seed stats keyed by payload only |
+| medium | `simple_fuzzer2.py` call site | `coverage_gain` always defaults to 0 |
+| low | `mutations.py` dict loader | Tokens with `=` and `"` misparsed as AFL `name="value"` |
 
-### Outside-diff note
-- **BLE splicing unreachable:** campaign `mutate_input` call omits donor argument, so splice guard never fires.
-
-### Mermaid flowchart
-Greptile emitted a campaign flowchart highlighting the missing BLE record edge and missing donor edge — useful for explaining integration gaps.
+*(Bugbot also claimed dict tokens unused via `mutate_payload`; disputed — `mutate_payload` → `random_mutation` can still select `dictionary_insert`.)*
 
 ## What Copilot found
 
-**Pending / unavailable** (Copilot PR reviewer not enabled / not a collaborator). Skeleton for when it arrives:
+**Unavailable.**
 
-| Expected Copilot focus (hypothesis) | Status |
-|-------------------------------------|--------|
-| Local style / null checks in new modules | Not observed |
-| Missing type hints / docstring nits | Not observed |
-| Possibly miss cross-file “record never called” bug | — |
+## Overlap (Greptile ∩ Cursor)
 
-### Next steps
-Enable Copilot code review on the repo, re-request on PR #2, then append Copilot findings and recompute overlap.
+| Finding | Greptile | Cursor |
+|---------|----------|--------|
+| BLE `record` never called | Yes | Yes |
+| BLE donor splice dead | Yes | Yes |
+| Schedule payload-only key | Yes | Yes |
+| Missing `coverage_gain` at call site | **No** | Yes |
+| Dict parse corruption | **No** | Yes |
+| Mermaid / confidence score | Yes | No |
 
-## Overlap
-- N/A (Copilot silent)
+**Core integration bugs: full overlap.** Cursor added call-site and parser findings; Greptile added packaging.
 
 ## Pitfalls and benefits (this tier)
 
 ### Greptile — benefits
-- **Caught real integration bugs** (unwired feedback, missing donor, weak schedule keys) that line-local review often misses
-- Flowchart made the missing edges obvious
-- Confidence score correctly low (2/5) given those gaps
+- Caught real “feature added but not connected” bugs
+- Flowchart + low confidence score make gaps obvious
 
 ### Greptile — pitfalls
-- Some summary path names / commit titles are slightly paraphrased vs exact repo filenames
-- Outside-diff comments can be easy to miss in the GitHub UI
+- Missed `coverage_gain` omission and dict parser edge case
+- Outside-diff comments easy to miss in GitHub UI
 
-### Copilot
-- Still unevaluable here; comparison incomplete for this PR
+### Cursor — benefits
+- Matched all Greptile integration P1s
+- Extra call-site / parser issues
+
+### Cursor — pitfalls
+- No confidence score / PR-bot summary for GitHub stakeholders
 
 ## Verdict for medium PRs
-Greptile’s graph/call-flow reading provided clear additional value: it treated “feature added but not connected” as a first-class defect. That class of finding is a strong argument for Greptile on multi-file fuzzer refactors—**if** Copilot later only reports local issues, Greptile wins this tier.
+**Greptile graph review is valuable, but not uniquely so vs Cursor** on this PR—both tools found the same critical unwired-BLE and schedule-keying defects. Pay for Greptile if you need always-on GitHub review without running Cursor; otherwise Cursor already covers the high-signal gaps here.
