@@ -3,11 +3,11 @@
 **PR:** https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3  
 **Branch:** `develop-3` → `main`  
 **Tier:** LARGE (1000+ LOC additive; ~2432 / −23 vs `main`)  
-**Head SHA:** `6a2233a35474118cac65ec89940e45996e2c93ec`  
+**Head SHA (code):** `6a2233a35474118cac65ec89940e45996e2c93ec`  
 
 ## Experiment context
 
-Top rung of the Greptile vs GitHub Copilot (standard) comparison. Includes small + medium tiers **plus** a substantial greybox pipeline.
+Top rung of the Greptile vs standard code-reviewer comparison. Includes small + medium tiers **plus** a substantial greybox pipeline. GitHub Copilot code review was unavailable (credits / collaborator 422); **Cursor Bugbot** was used as the standard automated reviewer stand-in.
 
 ### Large-tier modules
 - `corpus_manager.py` — weighted corpus, favoritism, persistence
@@ -24,7 +24,8 @@ Top rung of the Greptile vs GitHub Copilot (standard) comparison. Includes small
 | Reviewer | Status | Notes |
 |----------|--------|-------|
 | **Greptile** | Received | Summary + **3 inline P1s**; confidence **2/5** |
-| **GitHub Copilot** | **Not received** | Same access limitation as other PRs |
+| **GitHub Copilot** | **Not received** | Credits / not a collaborator (422) |
+| **Cursor Bugbot** (standard stand-in) | Received | 2 high + 2 medium on large-tier wiring |
 
 ## What Greptile found
 
@@ -51,33 +52,55 @@ Top rung of the Greptile vs GitHub Copilot (standard) comparison. Includes small
 ### Flowchart
 Greptile produced a mermaid pipeline showing missing copy of result fields and missing `bug_id` forward edges — again highlighting **integration seams**, not typos.
 
+## What Cursor Bugbot found (Copilot stand-in)
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| high | `simple_fuzzer2.py:563-620` | Response metadata never attached to `s_prime` before coverage/triage/stats → collapsed buckets, default `"CRASH"`, empty status metrics |
+| high | `simple_fuzzer2.py:625-634` | `note_iteration(reveals_bug=True)` omits `bug_id` → crash counters stay 0 despite triage/`FailureQ` |
+| medium | `simple_fuzzer2.py:607-610` | `mark_result` uses `coverage_gain or coverage_score`; rarity term keeps corpus favored |
+| medium | `simple_fuzzer2.py:1003-1115` | `CorpusManager` populated/persisted but `choose_next_seed` still only uses legacy `SeedQ` |
+
+Inherited medium-tier issues (BLE unwired `record`/donor, schedule keying, missing `coverage_gain` arg) remain in the cumulative diff.
+
 ## What Copilot found
 
-**Pending / unavailable.** No Copilot review bot activity on PR #3.
+**Unavailable** (credits / collaborator access). Cursor Bugbot substituted as the comparable automated reviewer.
 
-### Placeholder for future Copilot capture
-When Copilot runs, record:
-- Local defect count (null checks, naming, unused imports)
-- Whether it also flags telemetry plumbing / bug_id / trim predicate
-- Whether findings are limited to single-hunk scope
+## Overlap (Greptile ∩ Cursor)
 
-## Overlap
-- N/A until Copilot arrives  
-- **Predicted:** Copilot may flag the obvious `lambda candidate: True` smell if it sees that hunk; less likely to prove the `bug_id` ∧ `reveals_bug` conjunction across `fuzz_stats.py` without whole-pipeline reading
+| Finding | Greptile | Cursor Bugbot |
+|---------|----------|---------------|
+| `s_prime` telemetry not plumbed | Yes (P1) | Yes (high) |
+| `bug_id` dropped → zero crash stats | Yes (P1) | Yes (high) |
+| Minimizer `lambda: True` | Yes (P1) | **No** (missed) |
+| Corpus never selected for fuzzing | **No** | Yes (medium) |
+| `mark_result` rarity-as-gain | **No** | Yes (medium) |
+| Mermaid missing-edge diagrams | Yes | No |
+
+**Overlap rate on shared high-severity defects:** 2/2 telemetry/crash-ID issues. Greptile uniquely caught the minimizer predicate; Cursor uniquely caught corpus dead-wiring and favoritism decay.
 
 ## Pitfalls and benefits (this tier)
 
 ### Greptile — benefits
 - Highest signal of the three PRs: multiple **true** integration defects
 - Explicitly linked defects to undercounting in campaign reports (downstream impact)
-- Confidence score aligned with severity
+- Confidence score aligned with severity; flowchart aids explanation
 
 ### Greptile — pitfalls
-- Summary sometimes paraphrases filenames (`FuzzStatsCollector` vs local class naming variants)
-- Dense HTML summary comments are harder to skim than inline annotations alone
+- Missed corpus-vs-`SeedQ` selection disconnect (Cursor caught)
+- Summary sometimes paraphrases filenames
+- Dense HTML summaries harder to skim than inline-only tools
 
-### Copilot
-- Still unknown; comparison incomplete without product enablement
+### Cursor Bugbot — benefits
+- Matched Greptile on the two highest-impact dataflow bugs
+- Found corpus unused for selection (classic “module added, queue not switched”)
+- Found favoritism decay bug via score semantics
+
+### Cursor Bugbot — pitfalls
+- Missed `lambda: True` minimizer pollution (Greptile’s clearest policy bug)
+- No confidence score / merge recommendation narrative
+- No pipeline diagram
 
 ## Verdict for large PRs
-This is where Greptile’s graph/dataflow review is most valuable: the bugs are real, cross-module, and would ship silently (empty crash stats, polluted corpus). **Worth paying for** on large fuzzer/refactors *if* your alternative is line-local review only—pending Copilot confirmation once enabled.
+Both reviewers delivered real integration findings. Greptile’s graph-style review still adds **incremental** value (minimizer predicate + impact narrative + diagrams), but Cursor was not “hunk-local only”—it also reasoned across call sites. **Paying for Greptile is strongest when you want merge confidence + cross-module policy bugs; Cursor alone already catches most critical telemetry holes on this PR.**

@@ -2,53 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Greptile vs Copilot — Differential Report</title>
+  <title>Greptile vs Standard Reviewers — Differential Report</title>
   <style>
-    :root { --bg:#0f1419; --card:#1b222c; --text:#e7ecf1; --muted:#9aa7b5; --accent:#9ecbff; --good:#7dcea0; --bad:#f5b7b1; }
-    body { font-family: ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 32px; line-height: 1.5; }
+    :root { --bg:#0f1419; --card:#1b222c; --text:#e7ecf1; --muted:#9aa7b5; --accent:#9ecbff; --good:#7dcea0; --bad:#f5b7b1; --warn:#f9e79f; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 32px; line-height: 1.5; max-width: 960px; }
     h1,h2,h3 { color: var(--accent); }
     .card { background: var(--card); border-radius: 12px; padding: 20px 24px; margin: 16px 0; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a3441; vertical-align: top; }
     .yes { color: var(--good); font-weight: 600; }
     .no { color: var(--bad); font-weight: 600; }
+    .warn { color: var(--warn); font-weight: 600; }
     a { color: var(--accent); }
     code { background: #10161d; padding: 1px 6px; border-radius: 4px; }
-    .verdict { font-size: 1.15rem; }
+    .verdict { font-size: 1.05rem; }
   </style>
 </head>
 <body>
-  <h1>Greptile vs Copilot Differential Report</h1>
-  <p class="verdict card"><strong>Verdict:</strong> Greptile’s cross-file/graph findings on medium and large AFL-fuzzer PRs showed clear additional benefit. Copilot standard reviews were <span class="no">not received</span> (product/access blocker), so head-to-head pricing value vs Copilot is <em>inconclusive</em> until Copilot is enabled.</p>
+  <h1>Greptile Differential Report</h1>
+  <p class="verdict card"><strong>Verdict:</strong> Greptile’s cross-file findings on medium/large PRs were valuable. Copilot was <span class="no">unavailable</span> (credits/access). <strong>Cursor Bugbot</strong> (standard stand-in) <span class="yes">heavily overlapped</span> Greptile on critical dataflow bugs; each tool still found unique issues. Paying for Greptile is <span class="warn">situational</span> vs Cursor—strongest for always-on GitHub UX, confidence scores, and policy bugs Cursor missed.</p>
 
   <div class="card">
     <h2>PR ladder</h2>
     <table>
-      <tr><th>Tier</th><th>PR</th><th>LOC vs main</th><th>Greptile</th><th>Copilot</th></tr>
-      <tr><td>Small</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1">#1</a></td><td>+93/−8</td><td class="yes">5/5, no P1s</td><td class="no">Missing</td></tr>
-      <tr><td>Medium</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2">#2</a></td><td>+618/−21</td><td class="yes">2/5, 2 P1s + wiring gaps</td><td class="no">Missing</td></tr>
-      <tr><td>Large</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3">#3</a></td><td>+2432/−23</td><td class="yes">2/5, 3 P1 dataflow bugs</td><td class="no">Missing</td></tr>
+      <tr><th>Tier</th><th>PR</th><th>LOC</th><th>Greptile</th><th>Copilot</th><th>Cursor Bugbot</th></tr>
+      <tr><td>Small</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/1">#1</a></td><td>+93/−8</td><td class="yes">5/5, 0 P1</td><td class="no">Missing</td><td class="yes">0 bugs</td></tr>
+      <tr><td>Medium</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/2">#2</a></td><td>+618/−21</td><td class="yes">2/5, 2 P1</td><td class="no">Missing</td><td class="yes">1H + 4M + 1L</td></tr>
+      <tr><td>Large</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/3">#3</a></td><td>+2432/−23</td><td class="yes">2/5, 3 P1</td><td class="no">Missing</td><td class="yes">2H + 2M</td></tr>
     </table>
   </div>
 
   <div class="card">
-    <h2>Greptile unique value observed</h2>
+    <h2>Overlap highlights</h2>
     <ul>
-      <li>Missing BLE scheduler feedback / splice donor edges</li>
-      <li>Power-schedule payload key collisions across endpoints</li>
-      <li>Request result fields not plumbed into metrics → collapsed coverage</li>
-      <li><code>bug_id</code> dropped so crash stats stay zero</li>
-      <li>Minimizer <code>lambda: True</code> polluting favored corpus</li>
+      <li><strong>Both:</strong> BLE <code>record</code>/donor unwired; schedule payload key collisions; <code>s_prime</code> telemetry hole; <code>bug_id</code> drop</li>
+      <li><strong>Greptile only:</strong> minimizer <code>lambda: True</code>; mermaid diagrams; merge confidence</li>
+      <li><strong>Cursor only:</strong> corpus never selected; rarity-as-gain favoritism; missing <code>coverage_gain</code> arg; dict parser edge cases</li>
     </ul>
   </div>
 
   <div class="card">
-    <h2>Benefits / pitfalls</h2>
-    <p><strong>Benefits:</strong> integration-bug detection, calibrated confidence, impact narratives, fast GitHub App delivery.</p>
-    <p><strong>Pitfalls:</strong> paraphrased names, dense HTML summaries, weaker ROI on tiny clean PRs.</p>
-    <p><strong>Copilot:</strong> enable code review on the org/repo, then update <code>REPORT.md</code> files and this collated analysis.</p>
+    <h2>Pay-for-Greptile?</h2>
+    <p><strong>vs no review:</strong> <span class="yes">Yes</span>.</p>
+    <p><strong>vs Cursor Bugbot:</strong> <span class="warn">Marginal</span> — buy Greptile for PR-bot packaging and the unique policy catches; skip if every PR already gets a thorough Cursor/agent review.</p>
+    <p><strong>vs Copilot:</strong> <span class="warn">Inconclusive</span> until credits/access return.</p>
   </div>
 
-  <p style="color:var(--muted)">Full write-up: <code>GREPTILE_DIFFERENTIAL_CODE_REPORT.md</code> on <code>develop-3</code>. Per-PR detail in each branch’s <code>REPORT.md</code>.</p>
+  <p style="color:var(--muted)">Full write-up: <code>GREPTILE_DIFFERENTIAL_CODE_REPORT.md</code>. Per-PR: each branch’s <code>REPORT.md</code>. Updated 2026-08-26 after Cursor Bugbot stand-in pass.</p>
 </body>
 </html>
