@@ -5,13 +5,18 @@ import com.aflfuzzer.spring.model.CampaignRequest;
 import com.aflfuzzer.spring.model.CampaignStatus;
 import com.aflfuzzer.spring.model.SeedPayload;
 import com.aflfuzzer.spring.model.TargetResponse;
+import com.aflfuzzer.spring.mutation.DictionaryFileLoader;
+import com.aflfuzzer.spring.mutation.DictionaryMutator;
 import com.aflfuzzer.spring.mutation.MutationEngine;
+import com.aflfuzzer.spring.schedule.PowerScheduleService;
 import com.aflfuzzer.spring.targetclient.HttpTargetClient;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,6 +31,9 @@ public class CampaignService {
     private final HttpTargetClient targetClient;
     private final AflProperties properties;
     private final CrashHotIntensity crashHotIntensity;
+    private final PowerScheduleService powerScheduleService;
+    private final DictionaryMutator dictionaryMutator;
+    private final DictionaryFileLoader dictionaryFileLoader;
     private final Map<String, CampaignStatus> campaigns = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -34,13 +42,26 @@ public class CampaignService {
             MutationEngine mutationEngine,
             HttpTargetClient targetClient,
             AflProperties properties,
-            CrashHotIntensity crashHotIntensity
+            CrashHotIntensity crashHotIntensity,
+            PowerScheduleService powerScheduleService,
+            DictionaryMutator dictionaryMutator,
+            DictionaryFileLoader dictionaryFileLoader
     ) {
         this.seedQueueService = seedQueueService;
         this.mutationEngine = mutationEngine;
         this.targetClient = targetClient;
         this.properties = properties;
         this.crashHotIntensity = crashHotIntensity;
+        this.powerScheduleService = powerScheduleService;
+        this.dictionaryMutator = dictionaryMutator;
+        this.dictionaryFileLoader = dictionaryFileLoader;
+        try {
+            Path dict = new ClassPathResource("dictionaries/http_api.dict").getFile().toPath();
+            List<String> tokens = dictionaryFileLoader.load(dict);
+            dictionaryMutator.replaceTokens(tokens);
+        } catch (Exception ignored) {
+            // Keep built-in tokens when classpath dict is unavailable.
+        }
     }
 
     public CampaignStatus start(CampaignRequest request) {
@@ -52,7 +73,6 @@ public class CampaignService {
         status.setStartedAt(Instant.now());
 
         if (request.getResumeFile() != null && !request.getResumeFile().isBlank()) {
-            // Resolve to an absolute path so resume loads reliably across working directories.
             Path resume = Path.of(request.getResumeFile()).toAbsolutePath().normalize();
             if (!Files.exists(resume)) {
                 status.setState(CampaignStatus.State.FAILED);
@@ -83,21 +103,20 @@ public class CampaignService {
         try {
             for (int i = 0; i < iterations; i++) {
                 SeedPayload seed = seedQueueService.choose();
-                int mutationCount = crashHotIntensity.mutationCount(
-                        seed.getMethod(),
-                        seed.getPath(),
-                        properties.getMutationMin(),
-                        properties.getMutationMax()
-                );
+                int legacy = crashHotIntensity.mutationCount(
+                        seed.getMethod(), seed.getPath(), properties.getMutationMin(), properties.getMutationMax());
+                int scheduled = powerScheduleService.energy(seed);
+                int mutationCount = Math.max(1, (int) Math.round(0.45 * legacy + 0.55 * Math.min(12, scheduled)));
                 SeedPayload mutated;
                 if (ThreadLocalRandom.current().nextDouble() < 0.15) {
-                    SeedPayload donor = seedQueueService.choose();
-                    mutated = mutationEngine.mutateWithDonor(seed, donor, mutationCount);
+                    mutated = mutationEngine.mutateWithDonor(seed, seedQueueService.choose(), mutationCount);
                 } else {
                     mutated = mutationEngine.mutate(seed, mutationCount);
                 }
                 TargetResponse response = targetClient.execute(mutated);
                 status.setCompletedIterations(i + 1);
+                // BUG: coverage gain is not forwarded (always 0), so schedule coverage counters stall.
+                powerScheduleService.record(mutated, 0.0, response.isCrash());
                 if (response.isInteresting()) {
                     status.setInterestingCount(status.getInterestingCount() + 1);
                     seedQueueService.addInteresting(mutated);
@@ -109,6 +128,7 @@ public class CampaignService {
             }
             status.setState(CampaignStatus.State.COMPLETED);
             status.setMessage("Campaign completed");
+            status.getNotes().add("powerScheduleMode=" + powerScheduleService.getMode());
         } catch (Exception ex) {
             status.setState(CampaignStatus.State.FAILED);
             status.setMessage(ex.getMessage());
