@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Spring Greptile Onboarding Report</title>
+<style>
+:root{--bg:#0f1419;--card:#1a222c;--text:#e8eef4;--muted:#9aa7b5;--acc:#8ec7ff;--g:#7dcea0;--w:#f0d66e;--h:#d4a5ff;--bad:#f5b7b1;--line:#2a3544}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;padding:28px;max-width:980px}
+h1,h2,h3{color:var(--acc);line-height:1.25}
+h1{font-size:1.65rem;margin:0 0 10px}
+h2{font-size:1.12rem;margin:30px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:1rem;color:#b9d8ff;margin:18px 0 8px}
+p,li{font-size:0.94rem}
+.muted{color:var(--muted);font-size:0.86rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+.verdict{font-size:1.02rem}
+table{width:100%;border-collapse:collapse;font-size:0.84rem;background:var(--card);margin:10px 0}
+th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+th{color:var(--acc);background:#151c26}
+a{color:var(--acc)}
+code{background:#0d131b;padding:1px 5px;border-radius:4px;font-size:0.86em}
+.pill{display:inline-block;font-size:0.72rem;font-weight:700;padding:3px 8px;border-radius:999px;border:1px solid var(--line);margin:0 6px 6px 0}
+.g{color:var(--g)}.w{color:var(--w)}.h{color:var(--h)}.bad{color:var(--bad)}
+nav.toc a{display:inline-block;margin:0 10px 6px 0;font-size:0.82rem;color:var(--muted);text-decoration:none}
+nav.toc a:hover{color:var(--acc)}
+ul{margin:8px 0 8px 1.2em}
+@media print{body{background:#fff;color:#111;max-width:none} .card,table{background:#fff;border-color:#ccc} h1,h2,h3,th,a{color:#063a6b}}
+</style>
+</head>
+<body>
+
+<h1>Spring Greptile Onboarding Report</h1>
+<p class="muted">Date: 2026-08-27. Subject: AFL-Fuzzer Spring Boot rebuild. Style: STE-100 (short sentences, active voice, simple words). Depth: decision-grade. Length: controlled.</p>
+
+<div class="card verdict">
+<span class="pill g">Greptile</span>
+<span class="pill w">Copilot</span>
+<span class="pill h">Human-in-the-loop</span>
+<p><strong>Decision question:</strong> Should we onboard Greptile onto our codebases?</p>
+<p><strong>Short answer:</strong> <span class="g">Yes, as a supplement to human review</span> on multi-service and multi-file Spring work. Greptile is not a full replace for humans. Greptile overlaps Copilot on many critical defects. Greptile still adds unattended GitHub packaging, confidence scores, and cross-file edge finds that help merge decisions.</p>
+<p class="muted"><strong>Copilot</strong> in this report means Cursor Bugbot. GitHub Copilot did not run (credits / access). This report skips a “no review” baseline.</p>
+</div>
+
+<nav class="toc card">
+<strong>Contents</strong><br/>
+<a href="#purpose">1 Purpose</a>
+<a href="#method">2 Method</a>
+<a href="#baseline">3 Baseline service</a>
+<a href="#changes">4 Changes by tier</a>
+<a href="#mechanics">5 How reviewers work</a>
+<a href="#tools">6 Greptile tool use</a>
+<a href="#results">7 Results</a>
+<a href="#matrix">8 Finding matrix</a>
+<a href="#graph">9 Graph value</a>
+<a href="#crux">10 Crux check</a>
+<a href="#pros">11 Pros and cons</a>
+<a href="#cost">12 Cost and process</a>
+<a href="#decide">13 Onboarding decision</a>
+<a href="#next">14 Next steps</a>
+</nav>
+
+<h2 id="purpose">1. Purpose</h2>
+<p>We need evidence for a Greptile onboarding decision.</p>
+<p>We rebuilt the fuzzer as a Spring Boot service.</p>
+<p>We opened three additive PRs against <code>main-spring</code>.</p>
+<p>We compared Greptile, Copilot, and human-in-the-loop review.</p>
+<p>We measured understanding, defect detection, graph-style finds, and packaging value.</p>
+
+<h2 id="method">2. Method</h2>
+<table>
+<tr><th>Item</th><th>Detail</th></tr>
+<tr><td>Base branch</td><td><code>main-spring</code></td></tr>
+<tr><td>Service path</td><td><code>spring-fuzzer/</code> (Spring Boot 3.3, Java 21, Maven)</td></tr>
+<tr><td>Small PR</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/4">#4</a> <code>develop-1-spring</code> (+153 / −15)</td></tr>
+<tr><td>Medium PR</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/5">#5</a> <code>develop-2-spring</code> (+441 / −17)</td></tr>
+<tr><td>Large PR</td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/6">#6</a> <code>develop-3-spring</code> (+1041 / −20)</td></tr>
+<tr><td>Build check</td><td>Maven tests passed on all three develop branches</td></tr>
+<tr><td>Greptile</td><td>GitHub App reviews on #4–#6 (completed)</td></tr>
+<tr><td>Copilot</td><td>Cursor Bugbot on large tier vs <code>main-spring</code>; medium wiring bugs also covered</td></tr>
+<tr><td>Human</td><td>Modeled senior review (not a hired blind review)</td></tr>
+</table>
+<p>Higher branches include lower branches.</p>
+<p>Medium and large tiers include intentional incomplete wiring. This matches real microservice failure modes.</p>
+
+<h2 id="baseline">3. Baseline service on main-spring</h2>
+<p><code>main-spring</code> adds a working Spring Boot fuzzer service.</p>
+<p>REST endpoints start campaigns, read status, and mutate seeds.</p>
+<p>Internal packages act as microservice boundaries inside one deployable unit:</p>
+<ul>
+<li><code>api</code> — REST controllers</li>
+<li><code>campaign</code> — campaign loop and seed queue</li>
+<li><code>mutation</code> — mutation engine</li>
+<li><code>targetclient</code> — HTTP target client</li>
+<li><code>model</code> / <code>config</code> — DTOs and settings</li>
+</ul>
+<p>Default port is <code>8088</code>.</p>
+
+<h2 id="changes">4. Changes by tier</h2>
+
+<h3>4.1 Small (PR #4)</h3>
+<p>Adds dictionary insert and splice mutations.</p>
+<p>Adds crash-hot mutation intensity.</p>
+<p>Resolves resume paths to absolute paths.</p>
+<p><strong>Crux:</strong> Improve mutation diversity and resume reliability. Keep architecture stable.</p>
+
+<h3>4.2 Medium (PR #5)</h3>
+<p>Adds <code>PowerScheduleService</code> for HTTP campaign energy.</p>
+<p>Adds <code>DeviceEnergyScheduler</code> and a device-campaign API.</p>
+<p>Loads <code>dictionaries/http_api.dict</code> into the mutation path.</p>
+<p><strong>Crux:</strong> Add scheduling services. Feedback paths must write results back into those services.</p>
+<p><strong>Latent risk:</strong> Read paths are wired. Write paths are incomplete.</p>
+
+<h3>4.3 Large (PR #6)</h3>
+<p>Adds corpus, coverage bitmap, crash triage, fuzz stats, havoc, seed minimizer, and HTML reports.</p>
+<p>Wires these parts into <code>CampaignService</code>.</p>
+<p><strong>Crux:</strong> Build a greybox pipeline. Telemetry and selection must stay honest.</p>
+<p><strong>Latent risk:</strong> Shared singleton state, dropped response fields, dropped crash IDs, unused corpus selection, weak minimizer checks.</p>
+
+<h2 id="mechanics">5. How reviewers work</h2>
+<table>
+<tr><th>Reviewer</th><th>Mechanism</th><th>Output</th></tr>
+<tr><td>Greptile</td><td>Builds a repo graph of files, functions, classes, and calls. Uses agentic search across files. Optional TREX runtime checks exist in product, but were not seen here.</td><td>PR summary, confidence 0–5, P-level inline notes, flowcharts</td></tr>
+<tr><td>Copilot</td><td>Cursor Bugbot reviews the branch diff against <code>main-spring</code>. Reasons over call sites and API contracts in changed and related files.</td><td>Severity findings with file and line</td></tr>
+<tr><td>Human-in-the-loop</td><td>Reads the PR. Uses “find references.” Can run smoke tests. Judges product intent and merge risk.</td><td>Blocking comments, approval, or request changes</td></tr>
+</table>
+
+<p><strong>GitHub Copilot product (not run):</strong> Native PR reviewer with Lite/Balanced effort and optional project context. This study cannot score that product directly.</p>
+
+<h2 id="tools">6. Greptile tool use on these PRs</h2>
+<table>
+<tr><th>Capability</th><th>Seen?</th><th>Evidence</th></tr>
+<tr><td>Graph / multi-file search</td><td class="g">Yes</td><td>Missing feedback edges, shared-state notes, files-needing-attention lists</td></tr>
+<tr><td>Flowcharts</td><td class="g">Yes</td><td>Posted on #4, #5, and #6</td></tr>
+<tr><td>Confidence scores</td><td class="g">Yes</td><td>2/5 small; 0/5 medium; 0/5 large</td></tr>
+<tr><td>Security-oriented note</td><td class="g">Yes</td><td>Unbounded device-campaign <code>rounds</code> on #5</td></tr>
+<tr><td>Custom rules / learning</td><td class="bad">No</td><td>Not configured for this repo</td></tr>
+<tr><td>TREX sandbox execution</td><td class="bad">No</td><td>No runtime logs or test artifacts on the PRs</td></tr>
+</table>
+<p>Greptile used static graph reasoning and diagram packaging.</p>
+<p>Greptile did not prove defects by running the service in TREX.</p>
+
+<h2 id="results">7. Results by tier</h2>
+
+<h3>7.1 Small — PR #4 — Greptile 2/5</h3>
+<p>Greptile understood dictionary insert, splice, crash-hot intensity, and absolute resume paths.</p>
+<p>Greptile blocked on mutation bound risk, unsafe shared strategy-map updates, and a splice no-op path.</p>
+<p>Copilot did not need a separate small-tier pass for the onboarding decision. The small tier is mostly feature polish.</p>
+<p>A careful human can approve after bound and concurrency checks. A rushed human may miss the shared-map risk.</p>
+
+<h3>7.2 Medium — PR #5 — Greptile 0/5</h3>
+<p>Greptile understood HTTP and device scheduling.</p>
+<p>Greptile found disconnected feedback paths.</p>
+<p>Greptile found schedule identity collision across endpoints.</p>
+<p>Greptile found silent dictionary loss in packaged JARs.</p>
+<p>Greptile found unbounded remote work through <code>rounds</code>.</p>
+<p>Copilot also found missing device <code>record</code> calls and fixed-zero coverage gain into the power schedule.</p>
+<p>A careful human likely finds the missing <code>record</code> call. A human may miss JAR dictionary load and unbounded rounds.</p>
+
+<h3>7.3 Large — PR #6 — Greptile 0/5</h3>
+<p>Greptile understood the full greybox pipeline.</p>
+<p>Greptile found shared mutable campaign state.</p>
+<p>Greptile found null response fields in coverage observe.</p>
+<p>Greptile found null crash IDs in stats.</p>
+<p>Greptile found minimizer acceptance without reproduction.</p>
+<p>Greptile found corpus entries that never drive selection.</p>
+
+<p><strong>Copilot (large tier) severity list:</strong></p>
+<table>
+<tr><th>Sev</th><th>Finding</th></tr>
+<tr><td>high</td><td>Crash <code>bugId</code> is computed, then passed as null into stats.</td></tr>
+<tr><td>high</td><td>Coverage observe drops status and body.</td></tr>
+<tr><td>high</td><td>Power schedule records mutated body, but energy reads parent seed.</td></tr>
+<tr><td>high</td><td>Campaign report reads shared global service snapshots.</td></tr>
+<tr><td>medium</td><td>Schedule record keeps coverage gain at 0.0.</td></tr>
+<tr><td>medium</td><td>Corpus choose exists, but the loop still uses SeedQueue only.</td></tr>
+<tr><td>medium</td><td>markResult treats rarity score as coverage gain.</td></tr>
+<tr><td>medium</td><td>Device scheduler never records outcomes.</td></tr>
+<tr><td>medium</td><td>Minimizer predicate is always true.</td></tr>
+<tr><td>medium</td><td>Dictionary <code>getFile()</code> fails inside a fat JAR.</td></tr>
+</table>
+
+<p>A careful human likely finds dropped fields and dropped IDs.</p>
+<p>A human may miss shared report bleed and fat-JAR dictionary load under fatigue.</p>
+
+<h2 id="matrix">8. Finding matrix</h2>
+<table>
+<tr><th>Finding</th><th>Tier</th><th>Graph-like?</th><th>Greptile</th><th>Copilot</th><th>Human</th></tr>
+<tr><td>Mutation bounds / shared strategy map</td><td>S</td><td>Partial</td><td>Yes</td><td>—</td><td>Maybe</td></tr>
+<tr><td>Device schedule feedback missing</td><td>M</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Likely</td></tr>
+<tr><td>Coverage gain fixed at zero</td><td>M/L</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Schedule key collision / parent-child mismatch</td><td>M/L</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Unbounded device rounds</td><td>M</td><td>Partial</td><td>Yes</td><td>Partial</td><td>Maybe</td></tr>
+<tr><td>Fat-JAR dictionary load failure</td><td>M/L</td><td>No</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Response fields dropped before coverage</td><td>L</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Likely</td></tr>
+<tr><td>Crash ID dropped before stats</td><td>L</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Likely</td></tr>
+<tr><td>Corpus never selected</td><td>L</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Minimizer always true</td><td>L</td><td>Partial</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Shared campaign / report state</td><td>L</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>API design and product judgment</td><td>All</td><td>Human</td><td>No</td><td>No</td><td>Yes</td></tr>
+<tr><td>Confidence score + flowchart packaging</td><td>All</td><td>Product</td><td>Yes</td><td>No</td><td>No</td></tr>
+</table>
+<p><strong>Overlap:</strong> Greptile and Copilot agree on most critical integration defects.</p>
+<p><strong>Greptile edge:</strong> unattended GitHub delivery, confidence scores, flowcharts, and the unbounded-rounds security framing.</p>
+<p><strong>Copilot edge:</strong> sharp parent/child schedule mismatch detail on the large tier.</p>
+<p><strong>Human edge:</strong> merge ownership, runtime smoke tests, and product intent.</p>
+
+<h2 id="graph">9. Graph / AST value</h2>
+<p>Many defects need multi-hop reasoning.</p>
+<p>Examples: a service method exists, but the campaign loop never calls it.</p>
+<p>Examples: one class writes stats under one key, another class reads energy under a different key.</p>
+<p>Examples: response locals exist, but coverage receives nulls.</p>
+<p>Greptile’s graph story matches these defect types.</p>
+<p>Copilot also found most of them without Greptile’s hosted index.</p>
+<p><strong>Conclusion:</strong> Graph-style reasoning matters. Greptile is not the only system that can do it. Greptile forces that reasoning on every PR without a manual Cursor run.</p>
+
+<h2 id="crux">10. Did Greptile understand the crux?</h2>
+<table>
+<tr><th>Tier</th><th>Crux</th><th>Greptile understanding</th><th>Grade</th></tr>
+<tr><td>Small</td><td>Mutation and resume polish</td><td>Exact</td><td>A</td></tr>
+<tr><td>Medium</td><td>Schedulers must learn from feedback</td><td>Exact. Called out disconnected paths.</td><td>A</td></tr>
+<tr><td>Large</td><td>Pipeline must plumb results and select honestly</td><td>Exact. Called out shared state and dropped signals.</td><td>A</td></tr>
+</table>
+<p>Greptile confidence dropped from 2/5 to 0/5 as integration risk grew.</p>
+<p>That calibration supports merge gating use.</p>
+
+<h2 id="pros">11. Pros and cons</h2>
+<table>
+<tr><th>Reviewer</th><th>Pros</th><th>Cons</th></tr>
+<tr><td>Greptile</td><td>Always on. Strong Spring integration finds. Confidence scores. Flowcharts. Security notes. Good crux summaries.</td><td>Paid. Overlaps Copilot. TREX unused here. Dense HTML summaries. Needs human triage.</td></tr>
+<tr><td>Copilot</td><td>Strong defect recall. Fits IDE workflow. Finds fine-grained wiring bugs.</td><td>Manual in this setup. No confidence score. No PR flowchart packaging. GitHub product blocked in this study.</td></tr>
+<tr><td>Human-in-the-loop</td><td>Accountable. Can run the service. Judges API design and merge strategy.</td><td>Slow. Uneven on large diffs. Misses orphans when rushed. Not 24/7.</td></tr>
+</table>
+
+<h2 id="cost">12. Cost and process</h2>
+<table>
+<tr><th>Reviewer</th><th>Latency</th><th>Direct cost</th><th>Process friction</th></tr>
+<tr><td>Greptile</td><td>~minutes per PR</td><td>Seats + credits (+ TREX if enabled)</td><td>App install and rule tuning</td></tr>
+<tr><td>Copilot (Cursor)</td><td>minutes per branch</td><td>Cursor subscription (often already paid)</td><td>Must remember to run</td></tr>
+<tr><td>Human</td><td>hours on large PRs</td><td>Engineer time</td><td>Scheduling and context switch</td></tr>
+</table>
+<p>Greptile cost is easiest to justify when PRs are multi-module and humans already spend time hunting wiring bugs.</p>
+<p>Greptile cost is harder to justify if every PR already gets a mandatory Cursor Bugbot pass and humans already catch the same class of defects.</p>
+
+<h2 id="decide">13. Onboarding decision</h2>
+<div class="card">
+<p><strong>Recommend onboard Greptile:</strong> <span class="g">Yes, with conditions.</span></p>
+<ol>
+<li>Keep human approval required on protected branches.</li>
+<li>Use Greptile for unattended first-pass review on Spring and multi-file services.</li>
+<li>Enable TREX on at least one service class of PR if you pay for Greptile. Static review alone leaves runtime gaps.</li>
+<li>Keep Copilot/Cursor review where engineers already work in Cursor.</li>
+<li>Do not treat Greptile confidence scores as a sole merge gate.</li>
+</ol>
+<p><strong>Best posture:</strong> Human + Greptile (or Human + Copilot). Two automated tools plus a human give the highest recall, but one automated tool is enough for most teams.</p>
+<p><strong>Weak posture:</strong> Greptile alone with no human. Packaging helps. Accountability still needs a person.</p>
+</div>
+
+<table>
+<tr><th>Question</th><th>Answer</th></tr>
+<tr><td>Does Greptile understand Spring microservice wiring?</td><td class="g">Yes</td></tr>
+<tr><td>Does Greptile find graph-style integration bugs?</td><td class="g">Yes</td></tr>
+<tr><td>Does Copilot find many of the same bugs?</td><td class="w">Yes</td></tr>
+<tr><td>Is Greptile worth paying vs no automation?</td><td class="g">Yes</td></tr>
+<tr><td>Is Greptile worth paying vs Cursor already mandatory?</td><td class="w">Situational — buy for always-on GitHub UX and confidence packaging</td></tr>
+<tr><td>Should Greptile replace humans?</td><td class="bad">No</td></tr>
+</table>
+
+<h2 id="next">14. Next steps</h2>
+<ol>
+<li>Fix high-severity defects on PRs #5 and #6 before merge.</li>
+<li>Pilot Greptile for 2–4 weeks on real Spring service PRs.</li>
+<li>Track accepted vs ignored Greptile comments.</li>
+<li>Re-run one large PR with TREX enabled and compare.</li>
+<li>If GitHub Copilot credits return, add a Balanced review column and update this report.</li>
+</ol>
+
+<div class="card muted">
+<p><strong>Links:</strong>
+<a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/4">PR #4</a> ·
+<a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/5">PR #5</a> ·
+<a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/6">PR #6</a> ·
+<code>spring-fuzzer/</code> on <code>develop-3-spring</code></p>
+<p>End of report. STE-100 style. Decision-focused. Not a full transcript dump.</p>
+</div>
+
+</body>
+</html>
