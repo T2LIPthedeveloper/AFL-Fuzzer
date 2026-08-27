@@ -6,3 +6,7 @@ venv
 /env
 *.pyc
 /env
+
+.m2/
+spring-fuzzer/target/
+
