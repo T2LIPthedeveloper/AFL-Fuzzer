@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Spring Fuzzer Review Report</title>
+<style>
+:root{--bg:#0f1419;--card:#1a222c;--text:#e8eef4;--muted:#9aa7b5;--acc:#8ec7ff;--g:#7dcea0;--w:#f0d66e;--h:#d4a5ff;--line:#2a3544}
+*{box-sizing:border-box}
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;padding:28px;max-width:920px}
+h1,h2,h3{color:var(--acc);line-height:1.25}
+h1{font-size:1.6rem;margin:0 0 12px}
+h2{font-size:1.15rem;margin:28px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:1rem;color:#b9d8ff;margin:16px 0 8px}
+p,li{font-size:0.95rem}
+.muted{color:var(--muted);font-size:0.88rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+table{width:100%;border-collapse:collapse;font-size:0.86rem;background:var(--card)}
+th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+th{color:var(--acc)}
+a{color:var(--acc)}
+code{background:#0d131b;padding:1px 5px;border-radius:4px;font-size:0.88em}
+.pill{display:inline-block;font-size:0.72rem;font-weight:700;padding:3px 8px;border-radius:999px;border:1px solid var(--line);margin-right:6px}
+.g{color:var(--g)}.w{color:var(--w)}.h{color:var(--h)}
+</style>
+</head>
+<body>
+
+<h1>Spring Fuzzer Review Report</h1>
+<p class="muted">Date: 2026-08-26. Scope: Spring Boot rebuild. Language: STE-100 style. Short sentences. Active voice. Simple words.</p>
+
+<div class="card">
+<span class="pill g">Greptile</span>
+<span class="pill w">Copilot</span>
+<span class="pill h">Human-in-the-loop</span>
+<p><strong>Note:</strong> In this report, <strong>Copilot</strong> means Cursor Bugbot. GitHub Copilot did not run. This report does not use a “no review” baseline.</p>
+</div>
+
+<h2>1. Purpose</h2>
+<p>This study compares three review methods on a Spring Boot fuzzer service.</p>
+<p>The service lives in <code>spring-fuzzer/</code>.</p>
+<p>The study uses three additive pull requests against <code>main-spring</code>.</p>
+
+<h2>2. Branch ladder</h2>
+<table>
+<tr><th>Branch</th><th>PR</th><th>Size</th><th>Change vs main-spring</th></tr>
+<tr><td><code>develop-1-spring</code></td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/4">#4</a></td><td>Small</td><td>+153 / −15</td></tr>
+<tr><td><code>develop-2-spring</code></td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/5">#5</a></td><td>Medium</td><td>+441 / −17</td></tr>
+<tr><td><code>develop-3-spring</code></td><td><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/6">#6</a></td><td>Large</td><td>+1041 / −20</td></tr>
+</table>
+<p>Each higher branch includes the lower branch.</p>
+
+<h2>3. What the service does</h2>
+<p><code>main-spring</code> adds a Spring Boot microservice.</p>
+<p>The service starts fuzz campaigns through REST.</p>
+<p>Package boundaries are <code>api</code>, <code>campaign</code>, <code>mutation</code>, <code>targetclient</code>, <code>model</code>, and <code>config</code>.</p>
+<p>Maven tests passed on all three develop branches.</p>
+
+<h2>4. Code changes by tier</h2>
+<h3>4.1 Small</h3>
+<p>The small tier adds dictionary insert and splice.</p>
+<p>The small tier adds crash-hot mutation intensity.</p>
+<p>The small tier resolves resume paths to absolute paths.</p>
+
+<h3>4.2 Medium</h3>
+<p>The medium tier adds <code>PowerScheduleService</code>.</p>
+<p>The medium tier adds <code>DeviceEnergyScheduler</code> and a device campaign API.</p>
+<p>The medium tier loads an HTTP dictionary file.</p>
+
+<h3>4.3 Large</h3>
+<p>The large tier adds corpus, coverage, crash triage, stats, havoc, minimizer, and HTML reports.</p>
+<p>The large tier wires these parts into <code>CampaignService</code>.</p>
+
+<h2>5. How each reviewer works</h2>
+<table>
+<tr><th>Reviewer</th><th>How it works</th><th>Role in this study</th></tr>
+<tr><td>Greptile</td><td>Indexes the repo as a code graph. Reviews each PR with multi-file search. Posts a summary, a confidence score, and inline notes.</td><td>Ran on PRs #4, #5, and #6.</td></tr>
+<tr><td>Copilot</td><td>Here: Cursor Bugbot. Reviews the branch diff against <code>main-spring</code>.</td><td>Ran on the large tier. Medium findings follow from the same wiring bugs.</td></tr>
+<tr><td>Human-in-the-loop</td><td>An engineer reads the PR. The engineer uses search and judgment. The engineer can run a smoke test.</td><td>Modeled. Not a separate hired review.</td></tr>
+</table>
+
+<h2>6. Results by tier</h2>
+
+<h3>6.1 Small — PR #4</h3>
+<p><strong>Greptile confidence: 2/5.</strong></p>
+<p>Greptile understood the change set.</p>
+<p>Greptile found mutation bound risk, unsafe shared strategy map use, and a splice no-op path.</p>
+<p><strong>Copilot:</strong> No separate small-tier Bugbot pass is required for the final matrix. The small tier is mostly clean feature work.</p>
+<p><strong>Human:</strong> A careful human can approve after a bound check. A human may miss concurrent map risk under time pressure.</p>
+
+<h3>6.2 Medium — PR #5</h3>
+<p><strong>Greptile confidence: 0/5.</strong></p>
+<p>Greptile understood the scheduling work.</p>
+<p>Greptile found disconnected feedback paths.</p>
+<p>Greptile found dictionary load failure in a packaged JAR.</p>
+<p>Greptile found schedule key collision across endpoints.</p>
+<p>Greptile found an unbounded device-campaign request risk.</p>
+<p><strong>Copilot</strong> also found the missing device <code>record</code> call and the fixed zero coverage gain path.</p>
+<p><strong>Human:</strong> A careful human likely finds the missing <code>record</code> call. A human may miss the JAR dictionary path and the unbounded rounds risk.</p>
+
+<h3>6.3 Large — PR #6</h3>
+<p><strong>Greptile confidence: 0/5.</strong></p>
+<p>Greptile understood the greybox pipeline.</p>
+<p>Greptile found shared singleton state across campaigns.</p>
+<p>Greptile found dropped response fields before coverage.</p>
+<p>Greptile found dropped crash IDs before stats.</p>
+<p>Greptile found minimizer acceptance without re-check.</p>
+<p>Greptile found corpus entries that never drive selection.</p>
+
+<p><strong>Copilot findings on the large tier:</strong></p>
+<table>
+<tr><th>Severity</th><th>Finding</th></tr>
+<tr><td>high</td><td>Crash <code>bugId</code> is not passed to stats.</td></tr>
+<tr><td>high</td><td>Coverage observe drops status and body.</td></tr>
+<tr><td>high</td><td>Power schedule records the child body, but energy reads the parent seed.</td></tr>
+<tr><td>high</td><td>Per-campaign report uses shared global stats.</td></tr>
+<tr><td>medium</td><td>Coverage gain stays at zero in schedule record.</td></tr>
+<tr><td>medium</td><td>Corpus choose is never used in the loop.</td></tr>
+<tr><td>medium</td><td>markResult treats rarity score as gain.</td></tr>
+<tr><td>medium</td><td>Device scheduler never records feedback.</td></tr>
+<tr><td>medium</td><td>Minimizer uses <code>candidate -&gt; true</code>.</td></tr>
+<tr><td>medium</td><td>Dictionary <code>getFile()</code> fails in a fat JAR.</td></tr>
+</table>
+
+<p><strong>Human:</strong> A careful human likely finds lost response fields and lost bug IDs. A human may miss shared report state and fat-JAR dictionary load under fatigue.</p>
+
+<h2>7. Comparison matrix</h2>
+<table>
+<tr><th>Finding class</th><th>Greptile</th><th>Copilot</th><th>Human</th></tr>
+<tr><td>Missing device schedule feedback</td><td>Yes</td><td>Yes</td><td>Likely</td></tr>
+<tr><td>Coverage / response fields dropped</td><td>Yes</td><td>Yes</td><td>Likely</td></tr>
+<tr><td>Crash ID dropped in stats</td><td>Yes</td><td>Yes</td><td>Likely</td></tr>
+<tr><td>Corpus not selected</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Minimizer always true</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Shared campaign state / report bleed</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Unbounded device rounds</td><td>Yes</td><td>Partial</td><td>Maybe</td></tr>
+<tr><td>Fat-JAR dictionary load</td><td>Yes</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Parent/child schedule key mismatch</td><td>Partial</td><td>Yes</td><td>Maybe</td></tr>
+<tr><td>Product intent and API design judgment</td><td>No</td><td>No</td><td>Yes</td></tr>
+<tr><td>Confidence score and flowchart</td><td>Yes</td><td>No</td><td>No</td></tr>
+</table>
+
+<h2>8. Did Greptile understand the work?</h2>
+<p>Yes. Greptile stated the intent of each tier.</p>
+<p>Greptile focused on integration seams in the Spring service.</p>
+<p>Greptile used graph-style reasoning for missing feedback edges.</p>
+<p>Greptile posted flowcharts on all three PRs.</p>
+<p>Greptile did not show TREX runtime proof on these PRs.</p>
+
+<h2>9. Pros and cons</h2>
+<table>
+<tr><th>Reviewer</th><th>Pros</th><th>Cons</th></tr>
+<tr><td>Greptile</td><td>Always on. Strong integration finds. Confidence score. Flowcharts. Security note on unbounded work.</td><td>Paid service. Can miss some parent/child key details. No TREX proof here.</td></tr>
+<tr><td>Copilot</td><td>Strong defect recall on the large tier. Finds wiring bugs across services.</td><td>Not always on GitHub in this setup. No confidence score. Needs a manual run.</td></tr>
+<tr><td>Human-in-the-loop</td><td>Owns merge judgment. Can test runtime behavior. Can judge API design.</td><td>Slow. Uneven under large diffs. Misses some orphans when rushed.</td></tr>
+</table>
+
+<h2>10. Recommendation</h2>
+<p>Use a human reviewer on every merge to <code>main-spring</code>.</p>
+<p>Add Greptile or Copilot as a second pass.</p>
+<p>Prefer Greptile when you need unattended GitHub notes and clear confidence scores.</p>
+<p>Prefer Copilot when Cursor review is already part of the daily workflow.</p>
+<p>Do not merge PRs #5 or #6 until the high-severity wiring defects are fixed.</p>
+
+<h2>11. Links</h2>
+<ul>
+<li><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/4">PR #4 small</a></li>
+<li><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/5">PR #5 medium</a></li>
+<li><a href="https://github.com/T2LIPthedeveloper/AFL-Fuzzer/pull/6">PR #6 large</a></li>
+<li>Service path: <code>spring-fuzzer/</code></li>
+</ul>
+
+<p class="muted">End of report. STE-100 style applied: short sentences, active voice, one idea per sentence, consistent terms.</p>
+</body>
+</html>
