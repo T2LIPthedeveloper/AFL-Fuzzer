@@ -17,6 +17,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class CampaignService {
@@ -24,6 +25,7 @@ public class CampaignService {
     private final MutationEngine mutationEngine;
     private final HttpTargetClient targetClient;
     private final AflProperties properties;
+    private final CrashHotIntensity crashHotIntensity;
     private final Map<String, CampaignStatus> campaigns = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -31,12 +33,14 @@ public class CampaignService {
             SeedQueueService seedQueueService,
             MutationEngine mutationEngine,
             HttpTargetClient targetClient,
-            AflProperties properties
+            AflProperties properties,
+            CrashHotIntensity crashHotIntensity
     ) {
         this.seedQueueService = seedQueueService;
         this.mutationEngine = mutationEngine;
         this.targetClient = targetClient;
         this.properties = properties;
+        this.crashHotIntensity = crashHotIntensity;
     }
 
     public CampaignStatus start(CampaignRequest request) {
@@ -48,7 +52,8 @@ public class CampaignService {
         status.setStartedAt(Instant.now());
 
         if (request.getResumeFile() != null && !request.getResumeFile().isBlank()) {
-            Path resume = Path.of(request.getResumeFile());
+            // Resolve to an absolute path so resume loads reliably across working directories.
+            Path resume = Path.of(request.getResumeFile()).toAbsolutePath().normalize();
             if (!Files.exists(resume)) {
                 status.setState(CampaignStatus.State.FAILED);
                 status.setMessage("Resume file not found: " + resume);
@@ -56,7 +61,7 @@ public class CampaignService {
                 campaigns.put(status.getId(), status);
                 return status;
             }
-            status.getNotes().add("Resume path accepted: " + resume.toAbsolutePath());
+            status.getNotes().add("Resume path accepted: " + resume);
         }
 
         seedQueueService.replaceAll(request.getSeeds());
@@ -78,9 +83,19 @@ public class CampaignService {
         try {
             for (int i = 0; i < iterations; i++) {
                 SeedPayload seed = seedQueueService.choose();
-                int mutationCount = properties.getMutationMin()
-                        + (properties.getMutationMax() - properties.getMutationMin()) / 2;
-                SeedPayload mutated = mutationEngine.mutate(seed, mutationCount);
+                int mutationCount = crashHotIntensity.mutationCount(
+                        seed.getMethod(),
+                        seed.getPath(),
+                        properties.getMutationMin(),
+                        properties.getMutationMax()
+                );
+                SeedPayload mutated;
+                if (ThreadLocalRandom.current().nextDouble() < 0.15) {
+                    SeedPayload donor = seedQueueService.choose();
+                    mutated = mutationEngine.mutateWithDonor(seed, donor, mutationCount);
+                } else {
+                    mutated = mutationEngine.mutate(seed, mutationCount);
+                }
                 TargetResponse response = targetClient.execute(mutated);
                 status.setCompletedIterations(i + 1);
                 if (response.isInteresting()) {
@@ -89,6 +104,7 @@ public class CampaignService {
                 }
                 if (response.isCrash()) {
                     status.setCrashCount(status.getCrashCount() + 1);
+                    crashHotIntensity.noteCrash(mutated.getMethod(), mutated.getPath());
                 }
             }
             status.setState(CampaignStatus.State.COMPLETED);

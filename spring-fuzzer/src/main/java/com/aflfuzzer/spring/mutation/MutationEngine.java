@@ -4,35 +4,60 @@ import com.aflfuzzer.spring.model.SeedPayload;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class MutationEngine {
     private static final String[] SPECIAL = {"'", "\"", "<", ">", "&", ";", "|", "`", "$", "\0"};
     private final Random random = ThreadLocalRandom.current();
+    private final DictionaryMutator dictionaryMutator;
+    private final SpliceService spliceService;
+    private final Map<String, AtomicInteger> strategyHits = new HashMap<>();
+
+    public MutationEngine(DictionaryMutator dictionaryMutator, SpliceService spliceService) {
+        this.dictionaryMutator = dictionaryMutator;
+        this.spliceService = spliceService;
+    }
 
     public SeedPayload mutate(SeedPayload seed, int count) {
         SeedPayload current = seed.copy();
         int n = Math.max(1, count);
         for (int i = 0; i < n; i++) {
-            current = applyOne(current);
+            current = applyOne(current, null);
         }
         return current;
     }
 
-    public List<SeedPayload> mutateMany(SeedPayload seed, int count, int variants) {
-        List<SeedPayload> out = new ArrayList<>();
-        for (int i = 0; i < variants; i++) {
-            out.add(mutate(seed, count));
+    public SeedPayload mutateWithDonor(SeedPayload seed, SeedPayload donor, int count) {
+        SeedPayload current = seed.copy();
+        int n = Math.max(1, count);
+        for (int i = 0; i < n; i++) {
+            current = applyOne(current, donor);
         }
-        return out;
+        return current;
     }
 
-    private SeedPayload applyOne(SeedPayload seed) {
-        String strategy = pick(List.of("bitflip", "special", "number", "delete_key"));
+    public Map<String, Integer> strategySnapshot() {
+        Map<String, Integer> snap = new HashMap<>();
+        strategyHits.forEach((k, v) -> snap.put(k, v.get()));
+        return snap;
+    }
+
+    private SeedPayload applyOne(SeedPayload seed, SeedPayload donor) {
+        String strategy = pick(List.of(
+                "bitflip", "special", "number", "delete_key", "dictionary_insert", "splice"));
+        strategyHits.computeIfAbsent(strategy, k -> new AtomicInteger()).incrementAndGet();
+        if ("dictionary_insert".equals(strategy)) {
+            return dictionaryMutator.insert(seed);
+        }
+        if ("splice".equals(strategy)) {
+            return spliceService.splice(seed, donor == null ? seed : donor);
+        }
         SeedPayload next = seed.copy();
         Map<String, Object> body = next.getBody();
         if (body.isEmpty()) {
